@@ -1,0 +1,57 @@
+{
+  "name": "fake-s3",
+  "version": "1.0.0",
+  "description": "a fake s3 server for testing purposes",
+  "keywords": [],
+  "author": "Raynos <raynos2@gmail.com>",
+  "repository": "git://github.com/Raynos/fake-s3.git",
+  "main": "index",
+  "homepage": "https://github.com/Raynos/fake-s3",
+  "bugs": {
+    "url": "https://github.com/Raynos/fake-s3/issues",
+    "email": "raynos2@gmail.com"
+  },
+  "contributors": [
+    {
+      "name": "Raynos"
+    }
+  ],
+  "dependencies": {
+    "aws-sdk": "^2.422.0",
+    "raw-body": "^2.3.3",
+    "s3rver": "2.2.8",
+    "uuid": "^3.3.2"
+  },
+  "devDependencies": {
+    "coveralls": "^2.10.0",
+    "istanbul": "^0.3.5",
+    "opn": "^1.0.1",
+    "pre-commit": "0.0.11",
+    "standard": "^12.0.1",
+    "tap-spec": "^2.1.1",
+    "tape": "^3.4.0"
+  },
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "http://github.com/Raynos/fake-s3/raw/master/LICENSE"
+    }
+  ],
+  "scripts": {
+    "test": "npm run jshint -s && npm run cover -s",
+    "unit-test": "node test/index.js | tap-spec",
+    "jshint": "standard",
+    "cover": "istanbul cover --report html --print detail -- test/index.js",
+    "check-cover": "istanbul check-coverage --branches=100 --lines=100 --functions=100",
+    "view-cover": "opn ./coverage/index.html",
+    "travis": "npm run cover -s && istanbul report lcov && ((cat coverage/lcov.info | coveralls) || exit 0)"
+  },
+  "engine": {
+    "node": ">= 0.8.x"
+  },
+  "pre-commit": [
+    "test"
+  ],
+  "pre-commit.silent": true,
+  "ngen-version": "5.1.0"
+}
