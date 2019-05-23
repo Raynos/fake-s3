@@ -1,6 +1,6 @@
 {
   "name": "fake-s3",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "a fake s3 server for testing purposes",
   "keywords": [],
   "author": "Raynos <raynos2@gmail.com>",
