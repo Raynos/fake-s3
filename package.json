@@ -16,20 +16,14 @@
       "name": "Raynos"
     }
   ],
-  "dependencies": {
-    "aws-sdk": "^2.422.0",
-    "raw-body": "^2.3.3",
-    "s3rver": "2.2.8",
-    "uuid": "^3.3.2"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "coveralls": "^2.10.0",
-    "istanbul": "^0.3.5",
-    "opn": "^1.0.1",
-    "pre-commit": "0.0.11",
-    "standard": "^12.0.1",
-    "tap-spec": "^2.1.1",
-    "tape": "^3.4.0"
+    "aws-sdk": "2.507.0",
+    "nyc": "14.1.1",
+    "opn": "1.0.1",
+    "standard": "13.1.0",
+    "tape": "^3.4.0",
+    "tape-cluster": "3.2.1"
   },
   "licenses": [
     {
@@ -38,13 +32,11 @@
     }
   ],
   "scripts": {
-    "test": "npm run jshint -s && npm run cover -s",
-    "unit-test": "node test/index.js | tap-spec",
-    "jshint": "standard",
-    "cover": "istanbul cover --report html --print detail -- test/index.js",
-    "check-cover": "istanbul check-coverage --branches=100 --lines=100 --functions=100",
-    "view-cover": "opn ./coverage/index.html",
-    "travis": "npm run cover -s && istanbul report lcov && ((cat coverage/lcov.info | coveralls) || exit 0)"
+    "lint": "standard",
+    "test": "npm run lint && npm run cover -s && npm run check-cover",
+    "cover": "nyc -r html -r text -- node test/index.js",
+    "check-cover": "nyc check-coverage --branches=100 --lines=100 --functions=100",
+    "view-cover": "opn ./coverage/index.html"
   },
   "engine": {
     "node": ">= 0.8.x"
