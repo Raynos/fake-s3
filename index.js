@@ -98,7 +98,8 @@ class FakeS3 {
     return obj
   }
 
-  _handleGetObjectsV2(req, buf) {
+  _handleGetObjectsV2 (req) {
+    /* eslint-disable-next-line node/no-deprecated-api */
     const parsedUrl = url.parse(req.url, true)
     const parts = parsedUrl.pathname.split('/')
     if (parts.length > 2 || parts[0] !== '') {
@@ -134,7 +135,6 @@ class FakeS3 {
       </Contents>`
     }
 
-
     return `<ListBucketResult>
       <IsTruncated>false</IsTruncated>
       <Marker></Marker>
@@ -152,9 +152,9 @@ class FakeS3 {
       <Code>${err.code || 'InternalError'}</Code>
       <Message>${escapeXML(err.message)}</Message>
       ${err.resource
-        ? '<Resource>' + err.resource + '</Resource>'
-        : ''
-      }
+    ? '<Resource>' + err.resource + '</Resource>'
+    : ''
+}
       <RequestId>1</RequestId>
     </Error>`
   }
@@ -207,9 +207,12 @@ class FakeS3 {
       }
     }
 
-    return {
-      objects: s3bucket.getObjects()
-    }
+    const objects = s3bucket.getObjects()
+      .filter((o) => {
+        return o.key.startsWith(this.prefix)
+      })
+
+    return { objects }
   }
 
   async waitForFiles (bucket, count) {
@@ -250,7 +253,7 @@ async function sleep (n) {
   })
 }
 
-function escapeXML(str) {
+function escapeXML (str) {
   return str
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

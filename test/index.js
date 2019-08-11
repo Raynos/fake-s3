@@ -103,6 +103,42 @@ TestHarness.test('fakeS3 uploading without buckets', {
 
 TestHarness.test('fakeS3 supports parallel waiting', {
 }, async (harness, assert) => {
+  const results = await Promise.all([
+    harness.waitForFiles('my-bucket', 2),
+    harness.uploadFile(
+      'foo/my-file', 'some text'
+    ),
+    harness.uploadFile(
+      'bar/my-file', 'some text'
+    ),
+    harness.uploadFile(
+      'baz/my-file', 'some text'
+    ),
+    harness.uploadFile(
+      'foo/my-file2', 'some text2'
+    )
+  ])
+
+  const files = results[0]
+  const resp = results[1]
+
+  assert.ok(resp)
+  assert.ok(resp.ETag)
+
+  assert.ok(files)
+  assert.equal(files.objects.length, 2)
+
+  const obj = files.objects[0]
+  assert.equal(obj.bucket, 'my-bucket')
+  assert.equal(obj.key, 'foo/my-file')
+  assert.equal(obj.content.toString(), 'some text')
+
+  const allFiles = await harness.getFiles('my-bucket')
+  assert.equal(allFiles.objects.length, 2)
+})
+
+TestHarness.test('fakeS3 supports prefix', {
+}, async (harness, assert) => {
   const [resp, files] = await Promise.all([
     harness.uploadFile(
       'foo/my-file', 'some text'

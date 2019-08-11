@@ -10,10 +10,8 @@
 
 a fake s3 server for testing purposes.
 
-This module uses `s3rver` which does most of the heavy lifting.
-
-The actual files uploaded to S3 are persisted to disk in
-`os.tmpdir()`
+This is a zero dependency implementation that stores all objects
+in memory
 
 ## Example
 
