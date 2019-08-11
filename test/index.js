@@ -221,4 +221,64 @@ TestHarness.test('waitForFiles() timeout', {
   assert.ok(end - start > 150)
 })
 
-// TODO: test for s3.listObjectsV2
+TestHarness.test('getObject not supported', {
+}, async (harness, assert) => {
+  try {
+    await harness.s3.getObject({
+      Bucket: 'my-bucket',
+      Key: 'my-multipart.txt'
+    }).promise()
+  } catch (err) {
+    assert.equal(err.message, 'invalid url, expected /:bucket')
+    assert.equal(err.code, 'InternalError')
+
+    return
+  }
+  assert.ok(false)
+})
+
+TestHarness.test('listObjectsV2 query', {
+}, async (harness, assert) => {
+  const resp = await harness.uploadFile(
+    'foo/my-file', 'some text'
+  )
+
+  assert.ok(resp)
+  assert.ok(resp.ETag)
+
+  const resp2 = await harness.s3.listObjectsV2({
+    Bucket: 'my-bucket',
+    MaxKeys: 100
+  }).promise()
+
+  assert.ok(resp2)
+  assert.equal(resp2.Contents.length, 1)
+  assert.equal(resp2.Contents[0].Key, 'foo/my-file')
+  assert.equal(resp2.Contents[0].Size, 9)
+  assert.equal(resp2.Name, 'my-bucket')
+})
+
+TestHarness.test('listObjectsV2 query on non-existant bucket', {
+}, async (harness, assert) => {
+  const resp = await harness.uploadFile(
+    'foo/my-file', 'some text'
+  )
+
+  assert.ok(resp)
+  assert.ok(resp.ETag)
+
+  try {
+    await harness.s3.listObjectsV2({
+      Bucket: 'my-bucket2',
+      MaxKeys: 100
+    }).promise()
+  } catch (err) {
+    assert.equal(err.message,
+      'The specified bucket does not exist')
+    assert.equal(err.statusCode, 500)
+    assert.equal(err.code, 'NoSuchBucket')
+    return
+  }
+
+  assert.ok(false, 'not reached')
+})

@@ -98,14 +98,63 @@ class FakeS3 {
     return obj
   }
 
+  _handleGetObjectsV2(req, buf) {
+    const parsedUrl = url.parse(req.url, true)
+    const parts = parsedUrl.pathname.split('/')
+    if (parts.length > 2 || parts[0] !== '') {
+      throw new Error('invalid url, expected /:bucket')
+    }
+
+    const bucket = parts[1]
+
+    // TODO: handle parsedUrl.query.delimiter
+    // TODO: handle parsedUrl.query.marker
+    // TODO: handle parsedUrl.query.prefix
+    // TODO: handle parsedUrl.query["max-keys"]
+
+    const s3bucket = this._buckets.get(bucket)
+    if (!s3bucket) {
+      const err = new Error('The specified bucket does not exist')
+      err.code = 'NoSuchBucket'
+      err.resource = bucket
+      throw err
+    }
+
+    const objects = s3bucket.getObjects()
+
+    let contentXml = ''
+    for (const o of objects) {
+      contentXml += `<Contents>
+        <Key>${o.key}</Key>
+        <!-- TODO LastModified -->
+        <ETag>${o.md5}</ETag>
+        <Size>${o.content.length}</Size>
+        <StorageClass>STANDARD</StorageClass>
+        <!-- TODO OWNER -->
+      </Contents>`
+    }
+
+
+    return `<ListBucketResult>
+      <IsTruncated>false</IsTruncated>
+      <Marker></Marker>
+      <Name>${bucket}</Name>
+      <Prefix></Prefix>
+      <MaxKeys>1000</MaxKeys>
+      <KeyCount>${objects.length}</KeyCount>
+      <!-- TODO: support CommonPrefixes -->
+      ${contentXml}
+    </ListBucketResult>`
+  }
+
   _buildError (err) {
     return `<Error>
       <Code>${err.code || 'InternalError'}</Code>
-      <Message>${err.message}</Message>
+      <Message>${escapeXML(err.message)}</Message>
       ${err.resource
-    ? '<Resource>' + err.resource + '</Resource>'
-    : ''
-}
+        ? '<Resource>' + err.resource + '</Resource>'
+        : ''
+      }
       <RequestId>1</RequestId>
     </Error>`
   }
@@ -126,13 +175,19 @@ class FakeS3 {
 
       if (req.method === 'PUT') {
         try {
-          // PUT /:bucket/:key
-          // - bucketExists()
-          // - putObject()
           const obj = this._handlePutObject(req, bodyBuf)
 
           res.setHeader('ETag', JSON.stringify(obj.md5))
           res.end()
+        } catch (err) {
+          this._writeError(err, res)
+        }
+      } else if (req.method === 'GET') {
+        try {
+          const xml = this._handleGetObjectsV2(req, bodyBuf)
+
+          res.writeHead(200, { 'Content-Type': 'text/xml' })
+          res.end(xml)
         } catch (err) {
           this._writeError(err, res)
         }
@@ -142,10 +197,6 @@ class FakeS3 {
         ), res)
       }
     })
-
-    // GET /:bucket
-    // - bucketExists()
-    // - getBucket()
   }
 
   async getFiles (bucket) {
@@ -197,4 +248,13 @@ async function sleep (n) {
       resolve()
     }, n)
   })
+}
+
+function escapeXML(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/'/g, '&apos;')
+    .replace(/"/g, '&quot;')
 }
