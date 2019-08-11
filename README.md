@@ -19,35 +19,28 @@ in memory
 var FakeS3 = require("fake-s3");
 
 var server = new FakeS3({
-  port: 0,
   buckets: ['my-bucket'],
   prefix: 'files-i-care-about/'
 })
 
 // starts the server on specified port
-server.bootstrap((err) => {
-  // handle err
+await server.bootstrap()
 
-  // this field now exists and contains the actual hostPort
-  server.hostPort
-})
+// this field now exists and contains the actual hostPort
+server.hostPort
 
 // can wait for files
-server.waitForFiles('my-bucket', 2, (err, files) => {
-  // will call you back when two files have been uploaded
-})
+const files = await server.waitForFiles('my-bucket', 2)
+// will yield you back when two files have been uploaded
 
 // shutdown server
-server.close()
+await server.close()
 ```
 
 ## Docs
 
 ### `var server = new FakeS3(options)`
 
- - `options.port` : the port to lsiten on, defaults to `0`
- - `options.hostname` : host to listen on, defaults to `localhost`
- - `options.silent` : passed through to `s3rver`, defaults to `true`
  - `options.prefix` : prefix for `getFiles()` and `waitForFiles()` ;
       necessary to support multi part uploads, otherwise
       `waitForFiles()` will return too early when N parts have
@@ -59,15 +52,15 @@ server.close()
 This is the `hostPort` that the server is listening on, this
 will be non-null after `bootstrap()` finishes.
 
-### `server.bootstrap(cb)`
+### `await server.bootstrap()`
 
 starts the server
 
-### `getFiles(bucket, cb)`
+### `await getFiles(bucket)`
 
 gets all files in a bucket
 
-### `waitForFiles(bucket, count, cb)`
+### `await waitForFiles(bucket, count)`
 
 this will wait for file uploads to finish and calls `getFiles()`
 and returns them once it's finished.
@@ -75,7 +68,7 @@ and returns them once it's finished.
 This is useful if your application does background uploads and you
 want to be notified when they are finished.
 
-### `server.close()`
+### `await server.close()`
 
 closes the HTTP server.
 
