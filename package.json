@@ -26,7 +26,7 @@
     "@pre-bundled/tape": "4.11.0",
     "aws-sdk": "2.507.0",
     "npm-bin-deps": "1.3.2",
-    "tape-cluster": "3.2.1"
+    "tape-harness": "4.0.0"
   },
   "licenses": [
     {
