@@ -5,17 +5,21 @@ const util = require('util')
 const url = require('url')
 const assert = require('assert')
 const crypto = require('crypto')
+const path = require('path')
+const fs = require('fs')
+
+const mkdirP = util.promisify(fs.mkdir)
+const writeFileP = util.promisify(fs.writeFile)
+const readFileP = util.promisify(fs.readFile)
+const readdirP = util.promisify(fs.readdir)
 
 class S3Object {
-  constructor (bucket, key, content) {
+  constructor (bucket, key, content, md5, contentLength) {
     this.bucket = bucket
     this.key = key
     this.content = content
-
-    const md5Hash = crypto.createHash('md5')
-    md5Hash.update(content)
-    this.md5 = md5Hash.digest('hex')
-
+    this.md5 = md5
+    this.contentLength = contentLength
     // TODO: this.metadata
   }
 }
@@ -37,21 +41,29 @@ class S3Bucket {
 class FakeS3 {
   constructor (options) {
     assert(options, 'options required')
-    assert(options.prefix, 'options.prefix required')
-    assert(options.buckets, 'options.buckets required')
+    assert('prefix' in options, 'options.prefix required')
+    assert(
+      options.buckets || options.cachePath,
+      'options.buckets or options.cachePath required'
+    )
 
     this.requestPort = 'port' in options ? options.port : 0
     this.requestHost = options.hostname || 'localhost'
     this.waitTimeout = options.waitTimeout || 5 * 1000
 
+    this.touchedCache = false
+    this.knownCaches = []
+
     this.httpServer = http.createServer()
     this.hostPort = null
 
     this.prefix = options.prefix
-    this.buckets = options.buckets
+    this.initialBuckets = options.buckets || []
+    this.cachePath = options.cachePath
 
+    this.bucketsOwnerName = 'admin'
+    this.bucketsOwnerID = '1'
     this.start = Date.now()
-
     this._buckets = new Map()
   }
 
@@ -66,6 +78,124 @@ class FakeS3 {
 
     this.hostPort = `localhost:${this.httpServer.address().port}`
     this.setupBuckets()
+
+    if (this.cachePath) {
+      await this.populateFromCache(this.cachePath)
+    }
+  }
+
+  async tryMkdir (filePath) {
+    try {
+      await mkdirP(filePath)
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err
+    }
+  }
+
+  /**
+   * Can cache the output of `listBuckets()` directly.
+   */
+  async cacheBucketsToDisk (filePath, buckets) {
+    this.touchedCache = true
+    if (!this.knownCaches.includes(filePath)) {
+      this.knownCaches.push(filePath)
+    }
+
+    await this.tryMkdir(filePath)
+    await writeFileP(
+      path.join(filePath, 'buckets.json'),
+      JSON.stringify({
+        type: 'cached-buckets',
+        data: buckets
+      }),
+      'utf8'
+    )
+  }
+
+  /**
+   * Recommended to exhaustively get all objects and combine
+   * them and then call this.
+   */
+  async cacheObjectsToDisk (filePath, bucketName, objects) {
+    this.touchedCache = true
+    if (!this.knownCaches.includes(filePath)) {
+      this.knownCaches.push(filePath)
+    }
+
+    const key = encodeURIComponent(bucketName)
+    await this.tryMkdir(filePath)
+    await this.tryMkdir(path.join(filePath, 'buckets'))
+    await this.tryMkdir(path.join(filePath, 'buckets', key))
+    await writeFileP(
+      path.join(filePath, 'buckets', key, 'objects.json'),
+      JSON.stringify({
+        type: 'cached-objects',
+        bucketName,
+        objects
+      }),
+      'utf8'
+    )
+  }
+
+  async populateFromCache (filePath) {
+    let bucketsStr
+    try {
+      bucketsStr = await readFileP(
+        path.join(filePath, 'buckets.json'), 'utf8'
+      )
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err
+    }
+
+    if (bucketsStr) {
+      const buckets = JSON.parse(bucketsStr)
+      this.populateBuckets(buckets.data)
+    }
+
+    let bucketDirs = null
+    try {
+      bucketDirs = await readdirP(path.join(filePath, 'buckets'))
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err
+    }
+
+    if (bucketDirs) {
+      for (const bucketName of bucketDirs) {
+        const objectsStr = await readFileP(path.join(
+          filePath, 'buckets', bucketName, 'objects.json'
+        ))
+        const objectsInfo = JSON.parse(objectsStr)
+        this.populateObjects(
+          objectsInfo.bucketName, objectsInfo.objects
+        )
+      }
+    }
+  }
+
+  populateBuckets (buckets) {
+    this._buckets.clear()
+    for (const b of buckets.Buckets) {
+      this._buckets.set(b.Name, new S3Bucket())
+    }
+
+    this.bucketsOwnerID = buckets.Owner.ID
+    this.bucketsOwnerName = buckets.Owner.DisplayName
+  }
+
+  populateObjects (bucketName, objects) {
+    const bucket = this._buckets.get(bucketName)
+    if (!bucket) throw new Error('invalid bucketName')
+
+    for (const c of objects.Contents) {
+      const obj = new S3Object(
+        bucketName,
+        c.Key,
+        '',
+        c.ETag,
+        c.Size
+      )
+      bucket.addObject(obj)
+    }
   }
 
   _handlePutObject (req, buf) {
@@ -95,7 +225,10 @@ class FakeS3 {
       throw err
     }
 
-    const obj = new S3Object(bucket, key, buf)
+    const md5Hash = crypto.createHash('md5')
+    md5Hash.update(buf)
+    const md5 = md5Hash.digest('hex')
+    const obj = new S3Object(bucket, key, buf, md5, buf.length)
     s3bucket.addObject(obj)
     return obj
   }
@@ -119,8 +252,8 @@ class FakeS3 {
         ${bucketsXML}
       </Buckets>
       <Owner>
-        <DisplayName>admin</DisplayName>
-        <ID>1</ID>
+        <DisplayName>${this.bucketsOwnerName}</DisplayName>
+        <ID>${this.bucketsOwnerID}</ID>
       </Owner>
     </ListBucketsOutput>`
   }
@@ -156,7 +289,7 @@ class FakeS3 {
         <Key>${o.key}</Key>
         <!-- TODO LastModified -->
         <ETag>${o.md5}</ETag>
-        <Size>${o.content.length}</Size>
+        <Size>${o.contentLength}</Size>
         <StorageClass>STANDARD</StorageClass>
         <!-- TODO OWNER -->
       </Contents>`
@@ -272,7 +405,7 @@ class FakeS3 {
   }
 
   setupBuckets () {
-    for (const bucket of this.buckets) {
+    for (const bucket of this.initialBuckets) {
       this._buckets.set(bucket, new S3Bucket())
     }
   }

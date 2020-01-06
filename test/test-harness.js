@@ -1,5 +1,9 @@
 'use strict'
 
+const assert = require('assert')
+const util = require('util')
+
+const rimraf = require('@pre-bundled/rimraf')
 const tape = require('@pre-bundled/tape')
 const tapeHarness = require('tape-harness')
 const AWS = require('aws-sdk')
@@ -23,6 +27,33 @@ class TestHarness {
 
     /** @type AWS.S3 */
     this.s3 = null
+
+    this.cacheServer = null
+    this.cacheS3 = null
+  }
+
+  getCacheServer (cachePath) {
+    assert(cachePath, 'cachePath required')
+    if (this.cacheServer) return this.cacheServer
+
+    this.cacheServer = new FakeS3({
+      prefix: '',
+      cachePath: cachePath
+    })
+    return this.cacheServer
+  }
+
+  getCacheS3 () {
+    if (this.cacheS3) return this.cacheS3
+
+    this.cacheS3 = new AWS.S3({
+      endpoint: `http://${this.cacheServer.hostPort}`,
+      sslEnabled: false,
+      accessKeyId: '123',
+      secretAccessKey: 'abc',
+      s3ForcePathStyle: true
+    })
+    return this.cacheS3
   }
 
   async bootstrap () {
@@ -35,6 +66,14 @@ class TestHarness {
       secretAccessKey: 'abc',
       s3ForcePathStyle: true
     })
+  }
+
+  async uploadFileForBucket (bucket, key, body) {
+    return this.s3.upload({
+      Bucket: bucket,
+      Key: key,
+      Body: body
+    }).promise()
   }
 
   async uploadFile (key, body) {
@@ -56,6 +95,16 @@ class TestHarness {
 
   async close () {
     await this.server.close()
+
+    if (this.cacheServer) {
+      await this.cacheServer.close()
+    }
+
+    for (const cachePath of this.server.knownCaches) {
+      await util.promisify((cb) => {
+        rimraf(cachePath, cb)
+      })()
+    }
   }
 }
 

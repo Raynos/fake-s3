@@ -16,9 +16,10 @@ in memory
 ## Example
 
 ```js
-var FakeS3 = require("fake-s3");
+const FakeS3 = require('fake-s3');
+const AWS = require('aws-sdk')
 
-var server = new FakeS3({
+const server = new FakeS3({
   buckets: ['my-bucket'],
   prefix: 'files-i-care-about/'
 })
@@ -29,6 +30,15 @@ await server.bootstrap()
 // this field now exists and contains the actual hostPort
 server.hostPort
 
+// Create an S3 client connected to it
+const s3 = new AWS.S3({
+  endpoint: `http://${server.hostPort}`
+  sslEnabled: false,
+  accessKeyId: '123',
+  secretAccessKey: 'abc',
+  s3ForcePathStyle: true
+})
+
 // can wait for files
 const files = await server.waitForFiles('my-bucket', 2)
 // will yield you back when two files have been uploaded
@@ -36,6 +46,14 @@ const files = await server.waitForFiles('my-bucket', 2)
 // shutdown server
 await server.close()
 ```
+
+## Support
+
+The following `aws-sdk` methods are supported
+
+ - `s3.listBuckets()`
+ - `s3.listObjectsV2()`
+ - `s3.upload()`
 
 ## Docs
 

@@ -1,5 +1,8 @@
 'use strict'
 
+const path = require('path')
+const os = require('os')
+
 const { test } = require('./test-harness')
 
 test('fakeS3 is a server', async (harness, assert) => {
@@ -305,3 +308,147 @@ test('listBuckets 5', {
     CreationDate: data.Buckets[0].CreationDate
   }])
 })
+
+test('can cache buckets', {
+  buckets: ['buckets1', 'buckets2', 'buckets3']
+}, async (harness, assert) => {
+  const cachePath = path.join(
+    os.tmpdir(), `test-fake-s3-${cuuid()}`
+  )
+
+  const buckets = await harness.s3.listBuckets().promise()
+  // Test double caching is indempotent.
+  await harness.server.cacheBucketsToDisk(cachePath, buckets)
+  await harness.server.cacheBucketsToDisk(cachePath, buckets)
+
+  const server2 = harness.getCacheServer(cachePath)
+  await server2.bootstrap()
+
+  const cacheS3 = harness.getCacheS3()
+
+  const cacheBuckets = await cacheS3.listBuckets().promise()
+  assert.deepEqual(buckets, cacheBuckets)
+
+  assert.deepEqual(cacheBuckets.Buckets, [{
+    Name: 'buckets1',
+    CreationDate: cacheBuckets.Buckets[0].CreationDate
+  }, {
+    Name: 'buckets2',
+    CreationDate: cacheBuckets.Buckets[1].CreationDate
+  }, {
+    Name: 'buckets3',
+    CreationDate: cacheBuckets.Buckets[2].CreationDate
+  }])
+
+  assert.end()
+})
+
+test('can cache buckets', {
+  buckets: ['bucket1', 'bucket2']
+}, async (harness, assert) => {
+  const cachePath = path.join(
+    os.tmpdir(), `test-fake-s3-${cuuid()}`
+  )
+
+  await harness.uploadFileForBucket(
+    'bucket1', 'foo/my-file', 'some foo text'
+  )
+  await harness.uploadFileForBucket(
+    'bucket1', 'bar/my-file', 'some bar text'
+  )
+
+  await harness.uploadFileForBucket(
+    'bucket2', 'foo/foo', 'some foo text 123'
+  )
+  await harness.uploadFileForBucket(
+    'bucket2', 'bar/bar', 'some bar text 123456789'
+  )
+  await harness.uploadFileForBucket(
+    'bucket2', 'baz/baz', 'some baz text 123456789000'
+  )
+
+  const buckets = await harness.s3.listBuckets().promise()
+  await harness.server.cacheBucketsToDisk(cachePath, buckets)
+
+  const objects1 = await harness.s3.listObjectsV2({
+    Bucket: 'bucket1'
+  }).promise()
+  await harness.server.cacheObjectsToDisk(
+    cachePath, 'bucket1', objects1
+  )
+
+  const objects2 = await harness.s3.listObjectsV2({
+    Bucket: 'bucket2'
+  }).promise()
+  await harness.server.cacheObjectsToDisk(
+    cachePath, 'bucket2', objects2
+  )
+
+  const server2 = harness.getCacheServer(cachePath)
+  await server2.bootstrap()
+
+  const cacheS3 = harness.getCacheS3()
+
+  const cacheBuckets = await cacheS3.listBuckets().promise()
+  assert.deepEqual(cacheBuckets.Buckets, [{
+    Name: 'bucket1',
+    CreationDate: cacheBuckets.Buckets[0].CreationDate
+  }, {
+    Name: 'bucket2',
+    CreationDate: cacheBuckets.Buckets[1].CreationDate
+  }])
+
+  const cobjects1 = await cacheS3.listObjectsV2({
+    Bucket: 'bucket1'
+  }).promise()
+  assert.equal(cobjects1.Name, 'bucket1')
+  assert.equal(cobjects1.KeyCount, 2)
+
+  assert.deepEqual(cobjects1.Contents, [{
+    Key: 'foo/my-file',
+    ETag: '385da0ff8300f1adbd45b2f9dea6808f',
+    Size: 13,
+    StorageClass: 'STANDARD'
+  }, {
+    Key: 'bar/my-file',
+    ETag: '4a6509a66ec6815a287a01ee32e44dbc',
+    Size: 13,
+    StorageClass: 'STANDARD'
+  }])
+
+  const cobjects2 = await cacheS3.listObjectsV2({
+    Bucket: 'bucket2'
+  }).promise()
+  assert.equal(cobjects2.Name, 'bucket2')
+  assert.equal(cobjects2.KeyCount, 3)
+
+  assert.deepEqual(cobjects2.Contents, [{
+    Key: 'foo/foo',
+    ETag: '0ceba125bd0b23ccb487aeb3c29a6783',
+    Size: 17,
+    StorageClass: 'STANDARD'
+  }, {
+    Key: 'bar/bar',
+    ETag: 'c766bdc746dee5d795f3914e5698a3dd',
+    Size: 23,
+    StorageClass: 'STANDARD'
+  }, {
+    Key: 'baz/baz',
+    ETag: '67f258e01a0e0a6aa4a2853eaaf20360',
+    Size: 26,
+    StorageClass: 'STANDARD'
+  }])
+
+  assert.end()
+})
+
+function cuuid () {
+  const str = (
+    Date.now().toString(16) +
+    Math.random().toString(16).slice(2) +
+    Math.random().toString(16).slice(2)
+  ).slice(0, 32)
+  return str.slice(0, 8) + '-' + str.slice(8, 12) + '-' +
+    str.slice(12, 16) + '-' + str.slice(16, 20) + '-' +
+    str.slice(20)
+}
