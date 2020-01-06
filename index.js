@@ -50,6 +50,8 @@ class FakeS3 {
     this.prefix = options.prefix
     this.buckets = options.buckets
 
+    this.start = Date.now()
+
     this._buckets = new Map()
   }
 
@@ -96,6 +98,31 @@ class FakeS3 {
     const obj = new S3Object(bucket, key, buf)
     s3bucket.addObject(obj)
     return obj
+  }
+
+  _handleListBuckets () {
+    const buckets = [...this._buckets.keys()]
+    let bucketsXML = ''
+
+    const start = Math.floor(this.start / 1000)
+    for (const b of buckets) {
+      bucketsXML += `
+        <Bucket>
+          <CreationDate>${start}</CreationDate>
+          <Name>${b}</Name>
+        </Bucket>
+      `
+    }
+
+    return `<ListBucketsOutput>
+      <Buckets>
+        ${bucketsXML}
+      </Buckets>
+      <Owner>
+        <DisplayName>admin</DisplayName>
+        <ID>1</ID>
+      </Owner>
+    </ListBucketsOutput>`
   }
 
   _handleGetObjectsV2 (req) {
@@ -148,13 +175,15 @@ class FakeS3 {
   }
 
   _buildError (err) {
+    let resourceStr = ''
+    if (err.resource) {
+      resourceStr = `<Resource>${err.resource}</Resource>`
+    }
+
     return `<Error>
       <Code>${err.code || 'InternalError'}</Code>
       <Message>${escapeXML(err.message)}</Message>
-      ${err.resource
-    ? '<Resource>' + err.resource + '</Resource>'
-    : ''
-}
+      ${resourceStr}
       <RequestId>1</RequestId>
     </Error>`
   }
@@ -174,23 +203,35 @@ class FakeS3 {
       const bodyBuf = Buffer.concat(buffers)
 
       if (req.method === 'PUT') {
+        let obj
         try {
-          const obj = this._handlePutObject(req, bodyBuf)
-
-          res.setHeader('ETag', JSON.stringify(obj.md5))
-          res.end()
+          obj = this._handlePutObject(req, bodyBuf)
         } catch (err) {
-          this._writeError(err, res)
+          return this._writeError(err, res)
         }
+
+        res.setHeader('ETag', JSON.stringify(obj.md5))
+        res.end()
+      } else if (req.method === 'GET' && req.url === '/') {
+        let xml
+        try {
+          xml = this._handleListBuckets(req, bodyBuf)
+        } catch (err) {
+          return this._writeError(err, res)
+        }
+
+        res.writeHead(200, { 'Content-Type': 'text/xml' })
+        res.end(xml)
       } else if (req.method === 'GET') {
+        let xml
         try {
-          const xml = this._handleGetObjectsV2(req, bodyBuf)
-
-          res.writeHead(200, { 'Content-Type': 'text/xml' })
-          res.end(xml)
+          xml = this._handleGetObjectsV2(req, bodyBuf)
         } catch (err) {
-          this._writeError(err, res)
+          return this._writeError(err, res)
         }
+
+        res.writeHead(200, { 'Content-Type': 'text/xml' })
+        res.end(xml)
       } else {
         this._writeError(new Error(
           'url not supported: ' + req.method + ' ' + req.url

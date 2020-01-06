@@ -216,6 +216,8 @@ test('getObject not supported', {
   assert.ok(false)
 })
 
+test('')
+
 test('listObjectsV2 query', {
 }, async (harness, assert) => {
   const resp = await harness.uploadFile(
@@ -260,4 +262,46 @@ test('listObjectsV2 query on non-existant bucket', {
   }
 
   assert.ok(false, 'not reached')
+})
+
+test('listBuckets', async (harness, assert) => {
+  const data = await harness.s3.listBuckets({}).promise()
+
+  assert.ok(data)
+  assert.ok(data.Owner)
+  assert.deepEqual(data.Buckets, [{
+    Name: 'my-bucket',
+    CreationDate: data.Buckets[0].CreationDate
+  }])
+  assert.deepEqual(data.Owner, {
+    ID: '1',
+    DisplayName: 'admin'
+  })
+})
+
+test('listBuckets 5', {
+  buckets: [
+    'bucket1', 'bucket2', 'bucket3', 'bucket4', 'bucket5'
+  ]
+}, async (harness, assert) => {
+  const data = await harness.s3.listBuckets({}).promise()
+
+  assert.ok(data)
+  assert.ok(data.Owner)
+  assert.deepEqual(data.Buckets, [{
+    Name: 'bucket1',
+    CreationDate: data.Buckets[0].CreationDate
+  }, {
+    Name: 'bucket2',
+    CreationDate: data.Buckets[0].CreationDate
+  }, {
+    Name: 'bucket3',
+    CreationDate: data.Buckets[0].CreationDate
+  }, {
+    Name: 'bucket4',
+    CreationDate: data.Buckets[0].CreationDate
+  }, {
+    Name: 'bucket5',
+    CreationDate: data.Buckets[0].CreationDate
+  }])
 })

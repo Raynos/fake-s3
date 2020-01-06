@@ -21,6 +21,7 @@ class TestHarness {
 
     this.server = new FakeS3(opts)
 
+    /** @type AWS.S3 */
     this.s3 = null
   }
 
@@ -57,5 +58,17 @@ class TestHarness {
     await this.server.close()
   }
 }
+
+/**
+ * @type {((
+ *   str: string,
+ *   opts: object,
+ *   fn: (harness: TestHarness, tape: any) => void
+ * ) => void) &
+ * ((
+ *   str: string,
+ *   fn: (harness: TestHarness, tape: any) => void
+ * ) => void)}
+ */
 TestHarness.test = tapeHarness(tape, TestHarness)
 module.exports = TestHarness
