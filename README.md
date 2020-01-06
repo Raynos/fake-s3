@@ -55,6 +55,23 @@ The following `aws-sdk` methods are supported
  - `s3.listObjectsV2()`
  - `s3.upload()`
 
+## Features
+
+Currently the `fake-s3` module supports two different ways
+of getting data in & out of it.
+
+One where you just set up the `fake-s3` server and use the `s3`
+api to upload and list files.
+
+The second is to use the `populateFromCache()` method to
+load a bunch of fixtures of disk into memory.
+
+## Recommended local approach
+
+I recommend copying the `script/cache-from-prod.js` script into
+your application and using it to download production data onto
+your laptop so that it can be used for offline development.
+
 ## Docs
 
 ### `var server = new FakeS3(options)`
@@ -89,6 +106,25 @@ want to be notified when they are finished.
 ### `await server.close()`
 
 closes the HTTP server.
+
+### `await server.populateFromCache(cacheDir)`
+
+This will have the server fetch buckets & objects from a cache on
+disk. This can be useful for writing tests with fixtures or starting
+a local server with fixtures.
+
+It's recommended you use `cacheBucketsToDisk()` and
+`cacheObjectsToDisk()` to create the fixtures directory.
+
+### `await server.cacheBucketsToDisk(cacheDir, data)`
+
+Calling this will write buckets to the disk cache. The `data`
+parameter is the response of `s3.listBuckets()`
+
+### `await server.cacheObjectsToDisk(cacheDir, bucketName, data)`
+
+Calling this will write objects to the disk cache. The `data`
+parameter is the response of `s3.listObjectsV2()`
 
 ## Installation
 
