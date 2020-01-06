@@ -1,69 +1,12 @@
 'use strict'
 
-const tape = require('@pre-bundled/tape')
-const tapeCluster = require('tape-cluster')
-const AWS = require('aws-sdk')
+const { test } = require('./test-harness')
 
-const FakeS3 = require('../index.js')
-
-class TestHarness {
-  constructor (options = {}) {
-    this.buckets = options.buckets || ['my-bucket']
-
-    const opts = {
-      prefix: 'foo/',
-      waitTimeout: options.waitTimeout,
-      buckets: this.buckets
-    }
-    if ('port' in options) {
-      opts.port = options.port
-    }
-
-    this.server = new FakeS3(opts)
-
-    this.s3 = null
-  }
-
-  async bootstrap () {
-    await this.server.bootstrap()
-
-    this.s3 = new AWS.S3({
-      endpoint: `http://${this.server.hostPort}`,
-      sslEnabled: false,
-      accessKeyId: '123',
-      secretAccessKey: 'abc',
-      s3ForcePathStyle: true
-    })
-  }
-
-  async uploadFile (key, body) {
-    const bucket = this.buckets[0] || 'my-bucket'
-    return this.s3.upload({
-      Bucket: bucket,
-      Key: key,
-      Body: body
-    }).promise()
-  }
-
-  async waitForFiles (bucket, count) {
-    return this.server.waitForFiles(bucket, count)
-  }
-
-  async getFiles (bucket) {
-    return this.server.getFiles(bucket)
-  }
-
-  async close () {
-    await this.server.close()
-  }
-}
-TestHarness.test = tapeCluster(tape, TestHarness)
-
-TestHarness.test('fakeS3 is a server', async (harness, assert) => {
+test('fakeS3 is a server', async (harness, assert) => {
   assert.ok(harness.server.hostPort)
 })
 
-TestHarness.test('fakeS3 supports uploading & waiting', {
+test('fakeS3 supports uploading & waiting', {
 }, async (harness, assert) => {
   const resp = await harness.uploadFile(
     'foo/my-file', 'some text'
@@ -83,7 +26,7 @@ TestHarness.test('fakeS3 supports uploading & waiting', {
   assert.equal(obj.content.toString(), 'some text')
 })
 
-TestHarness.test('fakeS3 uploading without buckets', {
+test('fakeS3 uploading without buckets', {
   buckets: []
 }, async (harness, assert) => {
   try {
@@ -101,7 +44,7 @@ TestHarness.test('fakeS3 uploading without buckets', {
   assert.ok(false, 'not reached')
 })
 
-TestHarness.test('fakeS3 supports parallel waiting', {
+test('fakeS3 supports parallel waiting', {
 }, async (harness, assert) => {
   const results = await Promise.all([
     harness.waitForFiles('my-bucket', 2),
@@ -137,7 +80,7 @@ TestHarness.test('fakeS3 supports parallel waiting', {
   assert.equal(allFiles.objects.length, 2)
 })
 
-TestHarness.test('fakeS3 supports prefix', {
+test('fakeS3 supports prefix', {
 }, async (harness, assert) => {
   const [resp, files] = await Promise.all([
     harness.uploadFile(
@@ -158,13 +101,13 @@ TestHarness.test('fakeS3 supports prefix', {
   assert.equal(obj.content.toString(), 'some text')
 })
 
-TestHarness.test('listen on specific port', {
+test('listen on specific port', {
   port: 14367
 }, async (harness, assert) => {
   assert.equal(harness.server.hostPort, 'localhost:14367')
 })
 
-TestHarness.test('createBucket not supported', {
+test('createBucket not supported', {
 }, async (harness, assert) => {
   try {
     await harness.s3.createBucket({
@@ -179,7 +122,7 @@ TestHarness.test('createBucket not supported', {
   assert.ok(false)
 })
 
-TestHarness.test('copyObject not supported', {
+test('copyObject not supported', {
 }, async (harness, assert) => {
   try {
     await harness.s3.copyObject({
@@ -196,7 +139,7 @@ TestHarness.test('copyObject not supported', {
   assert.ok(false)
 })
 
-TestHarness.test('uploadPart not supported', {
+test('uploadPart not supported', {
 }, async (harness, assert) => {
   try {
     await harness.s3.uploadPart({
@@ -215,7 +158,7 @@ TestHarness.test('uploadPart not supported', {
   assert.ok(false)
 })
 
-TestHarness.test('createMultipartUpload not supported', {
+test('createMultipartUpload not supported', {
 }, async (harness, assert) => {
   try {
     await harness.s3.createMultipartUpload({
@@ -234,19 +177,19 @@ TestHarness.test('createMultipartUpload not supported', {
   assert.ok(false)
 })
 
-TestHarness.test('getFiles() for empty bucket', {
+test('getFiles() for empty bucket', {
 }, async (harness, assert) => {
   const files = await harness.getFiles('my-bucket')
   assert.equal(files.objects.length, 0)
 })
 
-TestHarness.test('getFiles() for non-existant bucket', {
+test('getFiles() for non-existant bucket', {
 }, async (harness, assert) => {
   const files = await harness.getFiles('no-bucket')
   assert.equal(files.objects.length, 0)
 })
 
-TestHarness.test('waitForFiles() timeout', {
+test('waitForFiles() timeout', {
   waitTimeout: 150
 }, async (harness, assert) => {
   const start = Date.now()
@@ -257,7 +200,7 @@ TestHarness.test('waitForFiles() timeout', {
   assert.ok(end - start > 150)
 })
 
-TestHarness.test('getObject not supported', {
+test('getObject not supported', {
 }, async (harness, assert) => {
   try {
     await harness.s3.getObject({
@@ -273,7 +216,7 @@ TestHarness.test('getObject not supported', {
   assert.ok(false)
 })
 
-TestHarness.test('listObjectsV2 query', {
+test('listObjectsV2 query', {
 }, async (harness, assert) => {
   const resp = await harness.uploadFile(
     'foo/my-file', 'some text'
@@ -294,7 +237,7 @@ TestHarness.test('listObjectsV2 query', {
   assert.equal(resp2.Name, 'my-bucket')
 })
 
-TestHarness.test('listObjectsV2 query on non-existant bucket', {
+test('listObjectsV2 query on non-existant bucket', {
 }, async (harness, assert) => {
   const resp = await harness.uploadFile(
     'foo/my-file', 'some text'
