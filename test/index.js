@@ -343,6 +343,289 @@ test('can cache buckets', {
   assert.end()
 })
 
+test('list objects with prefix', async (harness, assert) => {
+  const testFiles = [
+    'about/index.html',
+    'style/styles.css',
+    'images/wizard.png',
+    'images/sample.png',
+    'images/logo.png',
+    'images/art/solarsystem.svg',
+    'images/art/planet.svg',
+    'index.css',
+    'index.html'
+  ]
+
+  for (const file of testFiles) {
+    await harness.uploadFile(file, file)
+  }
+
+  const resp = await harness.s3.listObjectsV2({
+    Bucket: 'my-bucket',
+    Prefix: 'images/'
+  }).promise()
+
+  assert.equal(resp.KeyCount, 5)
+  assert.equal(resp.Name, 'my-bucket')
+  assert.equal(resp.MaxKeys, 1000)
+  assert.equal(resp.IsTruncated, false)
+  assert.ok(resp.Contents)
+  assert.equal(resp.Contents.length, 5)
+
+  assert.deepEqual(resp.Contents.map(o => o.Key), [
+    'images/art/planet.svg',
+    'images/art/solarsystem.svg',
+    'images/logo.png',
+    'images/sample.png',
+    'images/wizard.png'
+  ])
+
+  assert.end()
+})
+
+test('list objects with startAfter', async (harness, assert) => {
+  const testFiles = [
+    'about/index.html',
+    'style/styles.css',
+    'images/wizard.png',
+    'images/sample.png',
+    'images/logo.png',
+    'images/art/solarsystem.svg',
+    'images/art/planet.svg',
+    'index.css',
+    'index.html'
+  ]
+
+  for (const file of testFiles) {
+    await harness.uploadFile(file, file)
+  }
+
+  const resp = await harness.s3.listObjectsV2({
+    Bucket: 'my-bucket',
+    StartAfter: 'images/logo.png'
+  }).promise()
+
+  assert.equal(resp.KeyCount, 5)
+  assert.equal(resp.Name, 'my-bucket')
+  assert.equal(resp.MaxKeys, 1000)
+  assert.equal(resp.IsTruncated, false)
+  assert.ok(resp.Contents)
+  assert.equal(resp.Contents.length, 5)
+
+  assert.deepEqual(resp.Contents.map(o => o.Key), [
+    'images/sample.png',
+    'images/wizard.png',
+    'index.css',
+    'index.html',
+    'style/styles.css'
+  ])
+
+  assert.end()
+})
+
+test('list objects with continuationToken', {
+}, async (harness, assert) => {
+  const testFiles = [
+    'about/index.html',
+    'style/styles.css',
+    'images/wizard.png',
+    'images/sample.png',
+    'images/logo.png',
+    'images/art/solarsystem.svg',
+    'images/art/planet.svg',
+    'index.css',
+    'index.html'
+  ]
+
+  for (const file of testFiles) {
+    await harness.uploadFile(file, file)
+  }
+
+  const resp = await harness.s3.listObjectsV2({
+    Bucket: 'my-bucket',
+    MaxKeys: 3
+  }).promise()
+
+  assert.equal(resp.KeyCount, 3)
+  assert.equal(resp.MaxKeys, 3)
+  assert.equal(resp.Name, 'my-bucket')
+  assert.equal(resp.IsTruncated, true)
+  assert.deepEqual(resp.Contents.map(o => o.Key), [
+    'about/index.html',
+    'images/art/planet.svg',
+    'images/art/solarsystem.svg'
+  ])
+  assert.ok(resp.NextContinuationToken)
+  assert.notOk(resp.ContinuationToken)
+
+  const resp2 = await harness.s3.listObjectsV2({
+    Bucket: 'my-bucket',
+    MaxKeys: 3,
+    ContinuationToken: resp.NextContinuationToken
+  }).promise()
+
+  assert.equal(resp2.KeyCount, 3)
+  assert.equal(resp2.MaxKeys, 3)
+  assert.equal(resp2.Name, 'my-bucket')
+  assert.equal(resp2.IsTruncated, true)
+  assert.deepEqual(resp2.Contents.map(o => o.Key), [
+    'images/logo.png',
+    'images/sample.png',
+    'images/wizard.png'
+  ])
+  assert.ok(resp2.ContinuationToken)
+  assert.ok(resp2.NextContinuationToken)
+
+  const resp3 = await harness.s3.listObjectsV2({
+    Bucket: 'my-bucket',
+    MaxKeys: 3,
+    ContinuationToken: resp2.NextContinuationToken
+  }).promise()
+
+  assert.equal(resp3.KeyCount, 3)
+  assert.equal(resp3.MaxKeys, 3)
+  assert.equal(resp3.Name, 'my-bucket')
+  assert.equal(resp3.IsTruncated, false)
+  assert.deepEqual(resp3.Contents.map(o => o.Key), [
+    'index.css',
+    'index.html',
+    'style/styles.css'
+  ])
+  assert.ok(resp3.ContinuationToken)
+  assert.notOk(resp3.NextContinuationToken)
+
+  assert.end()
+})
+
+test('list objects with delimiter', async (harness, assert) => {
+  const testFiles = [
+    'about/index.html',
+    'style/styles.css',
+    'images/wizard.png',
+    'images/sample.png',
+    'images/logo.png',
+    'images/art/solarsystem.svg',
+    'images/art/planet.svg',
+    '.DS_Store',
+    'index.css',
+    'index.html'
+  ]
+
+  for (const file of testFiles) {
+    await harness.uploadFile(file, file)
+  }
+
+  const resp = await harness.s3.listObjectsV2({
+    Bucket: 'my-bucket',
+    Delimiter: '/'
+  }).promise()
+
+  assert.equal(resp.IsTruncated, false)
+  assert.equal(resp.Name, 'my-bucket')
+  assert.equal(resp.Prefix, '')
+  assert.equal(resp.Delimiter, '/')
+  assert.equal(resp.MaxKeys, 1000)
+  assert.equal(resp.KeyCount, 6)
+
+  assert.deepEqual(resp.CommonPrefixes, [{
+    Prefix: 'about/'
+  }, {
+    Prefix: 'images/'
+  }, {
+    Prefix: 'style/'
+  }])
+  assert.deepEqual(resp.Contents.map(o => o.Key), [
+    '.DS_Store',
+    'index.css',
+    'index.html'
+  ])
+
+  const resp2 = await harness.s3.listObjectsV2({
+    Bucket: 'my-bucket',
+    Delimiter: '/',
+    MaxKeys: 2
+  }).promise()
+
+  assert.equal(resp2.IsTruncated, true)
+  assert.equal(resp2.Name, 'my-bucket')
+  assert.equal(resp2.Prefix, '')
+  assert.equal(resp2.Delimiter, '/')
+  assert.equal(resp2.MaxKeys, 2)
+  assert.equal(resp2.KeyCount, 2)
+
+  assert.deepEqual(resp2.CommonPrefixes, [{
+    Prefix: 'about/'
+  }])
+  assert.deepEqual(resp2.Contents.map(o => o.Key), [
+    '.DS_Store'
+  ])
+  assert.ok(resp2.NextContinuationToken)
+
+  assert.end()
+})
+
+test('list objects with prefix & delimiter',
+  async (harness, assert) => {
+    const testFiles = [
+      'about/index.html',
+      'style/styles.css',
+      'images/wizard.png',
+      'images/sample.png',
+      'images/logo.png',
+      'images/art/solarsystem.svg',
+      'images/art/planet.svg',
+      '.DS_Store',
+      'index.css',
+      'index.html'
+    ]
+
+    for (const file of testFiles) {
+      await harness.uploadFile(file, file)
+    }
+
+    const resp = await harness.s3.listObjectsV2({
+      Bucket: 'my-bucket',
+      Delimiter: '/',
+      Prefix: 'images/'
+    }).promise()
+
+    assert.equal(resp.IsTruncated, false)
+    assert.equal(resp.Name, 'my-bucket')
+    assert.equal(resp.Prefix, 'images/')
+    assert.equal(resp.Delimiter, '/')
+    assert.equal(resp.MaxKeys, 1000)
+    assert.equal(resp.KeyCount, 4)
+
+    assert.deepEqual(resp.CommonPrefixes, [{
+      Prefix: 'images/art/'
+    }])
+    assert.deepEqual(resp.Contents.map(o => o.Key), [
+      'images/logo.png',
+      'images/sample.png',
+      'images/wizard.png'
+    ])
+
+    const resp2 = await harness.s3.listObjectsV2({
+      Bucket: 'my-bucket',
+      Delimiter: '/',
+      Prefix: 'images'
+    }).promise()
+
+    assert.equal(resp2.IsTruncated, false)
+    assert.equal(resp2.Name, 'my-bucket')
+    assert.equal(resp2.Prefix, 'images')
+    assert.equal(resp2.Delimiter, '/')
+    assert.equal(resp2.MaxKeys, 1000)
+    assert.equal(resp2.KeyCount, 1)
+
+    assert.deepEqual(resp2.CommonPrefixes, [{
+      Prefix: 'images/'
+    }])
+    assert.deepEqual(resp2.Contents.map(o => o.Key), [])
+
+    assert.end()
+  })
+
 test('can cache buckets', {
   buckets: ['bucket1', 'bucket2']
 }, async (harness, assert) => {
@@ -405,13 +688,13 @@ test('can cache buckets', {
   assert.equal(cobjects1.KeyCount, 2)
 
   assert.deepEqual(cobjects1.Contents, [{
-    Key: 'foo/my-file',
-    ETag: '385da0ff8300f1adbd45b2f9dea6808f',
+    Key: 'bar/my-file',
+    ETag: '4a6509a66ec6815a287a01ee32e44dbc',
     Size: 13,
     StorageClass: 'STANDARD'
   }, {
-    Key: 'bar/my-file',
-    ETag: '4a6509a66ec6815a287a01ee32e44dbc',
+    Key: 'foo/my-file',
+    ETag: '385da0ff8300f1adbd45b2f9dea6808f',
     Size: 13,
     StorageClass: 'STANDARD'
   }])
@@ -422,12 +705,7 @@ test('can cache buckets', {
   assert.equal(cobjects2.Name, 'bucket2')
   assert.equal(cobjects2.KeyCount, 3)
 
-  assert.deepEqual(cobjects2.Contents, [{
-    Key: 'foo/foo',
-    ETag: '0ceba125bd0b23ccb487aeb3c29a6783',
-    Size: 17,
-    StorageClass: 'STANDARD'
-  }, {
+  assert.deepEqual(cobjects2.Contents, [ {
     Key: 'bar/bar',
     ETag: 'c766bdc746dee5d795f3914e5698a3dd',
     Size: 23,
@@ -436,6 +714,11 @@ test('can cache buckets', {
     Key: 'baz/baz',
     ETag: '67f258e01a0e0a6aa4a2853eaaf20360',
     Size: 26,
+    StorageClass: 'STANDARD'
+  }, {
+    Key: 'foo/foo',
+    ETag: '0ceba125bd0b23ccb487aeb3c29a6783',
+    Size: 17,
     StorageClass: 'STANDARD'
   }])
 

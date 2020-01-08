@@ -15,12 +15,20 @@ const readdirP = util.promisify(fs.readdir)
 
 class S3Object {
   constructor (bucket, key, content, md5, contentLength) {
+    this.type = 's3-object'
     this.bucket = bucket
     this.key = key
     this.content = content
     this.md5 = md5
     this.contentLength = contentLength
     // TODO: this.metadata
+  }
+}
+
+class CommonPrefix {
+  constructor (prefix) {
+    this.type = 's3-common-prefix'
+    this.prefix = prefix
   }
 }
 
@@ -65,6 +73,8 @@ class FakeS3 {
     this.bucketsOwnerID = '1'
     this.start = Date.now()
     this._buckets = new Map()
+
+    this.tokens = {}
   }
 
   async bootstrap () {
@@ -258,6 +268,67 @@ class FakeS3 {
     </ListBucketsOutput>`
   }
 
+  paginate (parsedUrl, rawObjects) {
+    let maxKeys = 1000
+
+    if (parsedUrl.query['max-keys']) {
+      const queryMaxKeys = parseInt(parsedUrl.query['max-keys'], 10)
+      if (queryMaxKeys < maxKeys) {
+        maxKeys = queryMaxKeys
+      }
+    }
+
+    let offset = 0
+    const prevToken = parsedUrl.query['continuation-token']
+    if (prevToken) {
+      const tokenInfo = this.tokens[prevToken]
+      delete this.tokens[prevToken]
+
+      if (!tokenInfo) throw new Error('invalid next token')
+      offset = tokenInfo.offset
+    }
+
+    const end = offset + maxKeys
+    const resultObjects = rawObjects.slice(offset, end)
+    const truncated = rawObjects.length > end
+
+    let nextToken
+    if (truncated) {
+      nextToken = cuuid()
+      this.tokens[nextToken] = { offset: end }
+    }
+
+    return {
+      objects: resultObjects,
+      prevToken: prevToken,
+      maxKeys: maxKeys,
+      nextToken: nextToken
+    }
+  }
+
+  splitObjects (objects, delimiter, prefix) {
+    const prefixSet = new Set()
+
+    const out = []
+    for (const obj of objects) {
+      const key = prefix ? obj.key.slice(prefix.length) : obj.key
+
+      const parts = key.split(delimiter)
+      if (parts.length === 1) {
+        out.push(obj)
+      } else {
+        const segment = parts[0] + delimiter
+        if (prefixSet.has(segment)) {
+          continue
+        } else {
+          out.push(new CommonPrefix((prefix || '') + segment))
+          prefixSet.add(segment)
+        }
+      }
+    }
+    return out
+  }
+
   _handleGetObjectsV2 (req) {
     /* eslint-disable-next-line node/no-deprecated-api */
     const parsedUrl = url.parse(req.url, true)
@@ -269,9 +340,6 @@ class FakeS3 {
     const bucket = parts[1]
 
     // TODO: handle parsedUrl.query.delimiter
-    // TODO: handle parsedUrl.query.marker
-    // TODO: handle parsedUrl.query.prefix
-    // TODO: handle parsedUrl.query["max-keys"]
 
     const s3bucket = this._buckets.get(bucket)
     if (!s3bucket) {
@@ -281,30 +349,84 @@ class FakeS3 {
       throw err
     }
 
-    const objects = s3bucket.getObjects()
+    let objects = s3bucket.getObjects()
+    objects.sort((a, b) => {
+      return a.key < b.key ? -1 : 1
+    })
 
-    let contentXml = ''
-    for (const o of objects) {
-      contentXml += `<Contents>
-        <Key>${o.key}</Key>
-        <!-- TODO LastModified -->
-        <ETag>${o.md5}</ETag>
-        <Size>${o.contentLength}</Size>
-        <StorageClass>STANDARD</StorageClass>
-        <!-- TODO OWNER -->
-      </Contents>`
+    const startAfter = parsedUrl.query['start-after']
+    if (startAfter) {
+      const index = objects.findIndex((o) => {
+        return o.key === startAfter
+      })
+      if (index >= 0) {
+        objects = objects.slice(index + 1)
+      }
     }
 
-    return `<ListBucketResult>
-      <IsTruncated>false</IsTruncated>
+    const prefix = parsedUrl.query.prefix
+    if (prefix) {
+      objects = objects.filter((o) => {
+        return o.key.startsWith(prefix)
+      })
+    }
+
+    const delimiter = parsedUrl.query.delimiter
+    if (delimiter) {
+      objects = this.splitObjects(objects, delimiter, prefix)
+    }
+
+    const {
+      prevToken, nextToken, maxKeys,
+      objects: resultObjects
+    } = this.paginate(parsedUrl, objects)
+
+    let contentXml = ''
+    let commonPrefixes = ''
+    for (const o of resultObjects) {
+      if (o.type === 's3-object') {
+        contentXml += `<Contents>
+          <Key>${o.key}</Key>
+          <!-- TODO LastModified -->
+          <ETag>${o.md5}</ETag>
+          <Size>${o.contentLength}</Size>
+          <StorageClass>STANDARD</StorageClass>
+          <!-- TODO OWNER -->
+        </Contents>`
+      } else if (o.type === 's3-common-prefix') {
+        commonPrefixes += `<CommonPrefixes>
+          <Prefix>${o.prefix}</Prefix>
+        </CommonPrefixes>`
+      }
+    }
+
+    const truncated = Boolean(nextToken)
+    const contToken = nextToken
+      ? '<NextContinuationToken>' + nextToken +
+        '</NextContinuationToken>'
+      : ''
+    const prevContToken = prevToken
+      ? '<ContinuationToken>' + prevToken +
+        '</ContinuationToken>'
+      : ''
+    const delimiterResp = delimiter
+      ? '<Delimiter>' + delimiter + '</Delimiter>'
+      : ''
+
+    return `<ListObjectsV2Output>
+      <IsTruncated>${truncated}</IsTruncated>
       <Marker></Marker>
       <Name>${bucket}</Name>
-      <Prefix></Prefix>
-      <MaxKeys>1000</MaxKeys>
-      <KeyCount>${objects.length}</KeyCount>
+      <Prefix>${prefix || ''}</Prefix>
+      <MaxKeys>${maxKeys}</MaxKeys>
+      <KeyCount>${resultObjects.length}</KeyCount>
       <!-- TODO: support CommonPrefixes -->
       ${contentXml}
-    </ListBucketResult>`
+      ${commonPrefixes}
+      ${contToken}
+      ${prevContToken}
+      ${delimiterResp}
+    </ListObjectsV2Output>`
   }
 
   _buildError (err) {
@@ -434,4 +556,15 @@ function escapeXML (str) {
     .replace(/>/g, '&gt;')
     .replace(/'/g, '&apos;')
     .replace(/"/g, '&quot;')
+}
+
+function cuuid () {
+  const str = (
+    Date.now().toString(16) +
+    Math.random().toString(16).slice(2) +
+    Math.random().toString(16).slice(2)
+  ).slice(0, 32)
+  return str.slice(0, 8) + '-' + str.slice(8, 12) + '-' +
+    str.slice(12, 16) + '-' + str.slice(16, 20) + '-' +
+    str.slice(20)
 }
