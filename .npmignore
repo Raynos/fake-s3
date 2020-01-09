@@ -8,6 +8,7 @@
 *.o
 *.so
 *.node
+.nyc_output
 
 # Node Waf Byproducts #
 #######################
@@ -62,5 +63,4 @@ coverage
 # All translation files #
 #########################
 static/translations-s3/
-
-.git
+fixtures
