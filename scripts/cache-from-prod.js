@@ -43,11 +43,11 @@ async function main () {
 
   // Cache objects
   for (const b of buckets.Buckets) {
-    let bucketName = b.Name
-    let allObjects = []
+    const bucketName = b.Name
+    const allObjects = []
     let resp
 
-    let maxReq = 15
+    const maxReq = 15
     let reqCount = 0
 
     do {
@@ -109,7 +109,7 @@ function longestCommonPrefix (strs) {
   let smallest = strs[0]
   let largest = strs[0]
   for (let i = 1; i < strs.length; i++) {
-    let s = strs[i]
+    const s = strs[i]
     if (s > largest) {
       largest = s
     }
@@ -125,4 +125,3 @@ function longestCommonPrefix (strs) {
 
   return ''
 }
-
