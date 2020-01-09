@@ -116,15 +116,23 @@ a local server with fixtures.
 It's recommended you use `cacheBucketsToDisk()` and
 `cacheObjectsToDisk()` to create the fixtures directory.
 
-### `await server.cacheBucketsToDisk(cacheDir, data)`
+### `await server.cacheBucketsToDisk(cacheDir, accessKeyId, data)`
 
 Calling this will write buckets to the disk cache. The `data`
-parameter is the response of `s3.listBuckets()`
+parameter is the response of `s3.listBuckets()`.
 
-### `await server.cacheObjectsToDisk(cacheDir, bucketName, data)`
+The accessKeyId is the name of the AWS account you are writing to.
+If you only use one account you can just specify 'default' otherwise
+you can get it from the S3 client instance.
+
+### `await server.cacheObjectsToDisk(cacheDir, accessKeyId, bucketName, data)`
 
 Calling this will write objects to the disk cache. The `data`
 parameter is the response of `s3.listObjectsV2()`
+
+The accessKeyId is the name of the AWS account you are writing to.
+If you only use one account you can just specify 'default' otherwise
+you can get it from the S3 client instance.
 
 ## Installation
 
