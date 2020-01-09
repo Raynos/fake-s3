@@ -628,7 +628,7 @@ test('list objects with prefix & delimiter',
     assert.end()
   })
 
-test('can cache buckets', {
+test('can cache objects', {
   buckets: ['bucket1', 'bucket2']
 }, async (harness, assert) => {
   const cachePath = path.join(
@@ -693,14 +693,18 @@ test('can cache buckets', {
   assert.deepEqual(cobjects1.Contents, [{
     Key: 'bar/my-file',
     ETag: '4a6509a66ec6815a287a01ee32e44dbc',
+    LastModified: cobjects1.Contents[0].LastModified,
     Size: 13,
     StorageClass: 'STANDARD'
   }, {
     Key: 'foo/my-file',
     ETag: '385da0ff8300f1adbd45b2f9dea6808f',
+    LastModified: cobjects1.Contents[1].LastModified,
     Size: 13,
     StorageClass: 'STANDARD'
   }])
+  assert.ok(cobjects1.Contents[0].LastModified)
+  assert.ok(cobjects1.Contents[1].LastModified)
 
   const cobjects2 = await cacheS3.listObjectsV2({
     Bucket: 'bucket2'
@@ -708,19 +712,22 @@ test('can cache buckets', {
   assert.equal(cobjects2.Name, 'bucket2')
   assert.equal(cobjects2.KeyCount, 3)
 
-  assert.deepEqual(cobjects2.Contents, [ {
+  assert.deepEqual(cobjects2.Contents, [{
     Key: 'bar/bar',
     ETag: 'c766bdc746dee5d795f3914e5698a3dd',
+    LastModified: cobjects2.Contents[0].LastModified,
     Size: 23,
     StorageClass: 'STANDARD'
   }, {
     Key: 'baz/baz',
     ETag: '67f258e01a0e0a6aa4a2853eaaf20360',
+    LastModified: cobjects2.Contents[1].LastModified,
     Size: 26,
     StorageClass: 'STANDARD'
   }, {
     Key: 'foo/foo',
     ETag: '0ceba125bd0b23ccb487aeb3c29a6783',
+    LastModified: cobjects2.Contents[2].LastModified,
     Size: 17,
     StorageClass: 'STANDARD'
   }])
