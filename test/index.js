@@ -317,9 +317,11 @@ test('can cache buckets', {
   )
 
   const buckets = await harness.s3.listBuckets().promise()
+  const accessKeyId = harness.s3.config.credentials.accessKeyId
+
   // Test double caching is indempotent.
-  await harness.server.cacheBucketsToDisk(cachePath, buckets)
-  await harness.server.cacheBucketsToDisk(cachePath, buckets)
+  await harness.server.cacheBucketsToDisk(cachePath, accessKeyId, buckets)
+  await harness.server.cacheBucketsToDisk(cachePath, accessKeyId, buckets)
 
   const server2 = harness.getCacheServer(cachePath)
   await server2.bootstrap()
@@ -651,20 +653,21 @@ test('can cache buckets', {
   )
 
   const buckets = await harness.s3.listBuckets().promise()
-  await harness.server.cacheBucketsToDisk(cachePath, buckets)
+  const accessKeyId = harness.s3.config.credentials.accessKeyId
+  await harness.server.cacheBucketsToDisk(cachePath, accessKeyId, buckets)
 
   const objects1 = await harness.s3.listObjectsV2({
     Bucket: 'bucket1'
   }).promise()
   await harness.server.cacheObjectsToDisk(
-    cachePath, 'bucket1', objects1
+    cachePath, accessKeyId, 'bucket1', objects1
   )
 
   const objects2 = await harness.s3.listObjectsV2({
     Bucket: 'bucket2'
   }).promise()
   await harness.server.cacheObjectsToDisk(
-    cachePath, 'bucket2', objects2
+    cachePath, accessKeyId, 'bucket2', objects2
   )
 
   const server2 = harness.getCacheServer(cachePath)

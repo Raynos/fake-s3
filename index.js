@@ -13,6 +13,8 @@ const writeFileP = util.promisify(fs.writeFile)
 const readFileP = util.promisify(fs.readFile)
 const readdirP = util.promisify(fs.readdir)
 
+const stripCreds = /Credential=([\w-/0-9a-zA-Z]+),/
+
 class S3Object {
   constructor (bucket, key, content, md5, contentLength) {
     this.type = 's3-object'
@@ -69,10 +71,10 @@ class FakeS3 {
     this.initialBuckets = options.buckets || []
     this.cachePath = options.cachePath
 
-    this.bucketsOwnerName = 'admin'
-    this.bucketsOwnerID = '1'
     this.start = Date.now()
-    this._buckets = new Map()
+
+    this._profiles = new Map()
+    this._bucketOwnerInfo = new Map()
 
     this.tokens = {}
   }
@@ -105,18 +107,20 @@ class FakeS3 {
   /**
    * Can cache the output of `listBuckets()` directly.
    */
-  async cacheBucketsToDisk (filePath, buckets) {
+  async cacheBucketsToDisk (filePath, accessKeyId, buckets) {
     this.touchedCache = true
     if (!this.knownCaches.includes(filePath)) {
       this.knownCaches.push(filePath)
     }
 
     await this.tryMkdir(filePath)
+    await this.tryMkdir(path.join(filePath, 'buckets'))
     await writeFileP(
-      path.join(filePath, 'buckets.json'),
+      path.join(filePath, 'buckets', `${accessKeyId}.json`),
       JSON.stringify({
         type: 'cached-buckets',
-        data: buckets
+        data: buckets,
+        accessKeyId: accessKeyId
       }),
       'utf8'
     )
@@ -126,7 +130,7 @@ class FakeS3 {
    * Recommended to exhaustively get all objects and combine
    * them and then call this.
    */
-  async cacheObjectsToDisk (filePath, bucketName, objects) {
+  async cacheObjectsToDisk (filePath, accessKeyId, bucketName, objects) {
     this.touchedCache = true
     if (!this.knownCaches.includes(filePath)) {
       this.knownCaches.push(filePath)
@@ -134,13 +138,14 @@ class FakeS3 {
 
     const key = encodeURIComponent(bucketName)
     await this.tryMkdir(filePath)
-    await this.tryMkdir(path.join(filePath, 'buckets'))
-    await this.tryMkdir(path.join(filePath, 'buckets', key))
+    await this.tryMkdir(path.join(filePath, 'objects'))
+    await this.tryMkdir(path.join(filePath, 'objects', key))
     await writeFileP(
-      path.join(filePath, 'buckets', key, 'objects.json'),
+      path.join(filePath, 'objects', key, `${accessKeyId}.json`),
       JSON.stringify({
         type: 'cached-objects',
         bucketName,
+        accessKeyId,
         objects
       }),
       'utf8'
@@ -148,52 +153,72 @@ class FakeS3 {
   }
 
   async populateFromCache (filePath) {
-    let bucketsStr
+    let bucketFiles = null
     try {
-      bucketsStr = await readFileP(
-        path.join(filePath, 'buckets.json'), 'utf8'
-      )
+      bucketFiles = await readdirP(path.join(filePath, 'buckets'))
     } catch (err) {
       if (err.code !== 'ENOENT') throw err
     }
 
-    if (bucketsStr) {
-      const buckets = JSON.parse(bucketsStr)
-      this.populateBuckets(buckets.data)
+    if (bucketFiles) {
+      for (const fileName of bucketFiles) {
+        const bucketStr = await readFileP(path.join(
+          filePath, 'buckets', fileName
+        ))
+        const buckets = JSON.parse(bucketStr)
+        this.populateBuckets(buckets.accessKeyId, buckets.data)
+      }
     }
 
-    let bucketDirs = null
+    // TODO: fix me
+
+    let objectDirs = null
     try {
-      bucketDirs = await readdirP(path.join(filePath, 'buckets'))
+      objectDirs = await readdirP(path.join(filePath, 'objects'))
     } catch (err) {
       if (err.code !== 'ENOENT') throw err
     }
 
-    if (bucketDirs) {
-      for (const bucketName of bucketDirs) {
+    if (!objectDirs) {
+      return
+    }
+
+    for (const bucketName of objectDirs) {
+      const objectFiles = await readdirP(path.join(
+        filePath, 'objects', bucketName
+      ))
+
+      for (const objectFile of objectFiles) {
         const objectsStr = await readFileP(path.join(
-          filePath, 'buckets', bucketName, 'objects.json'
+          filePath, 'objects', bucketName, objectFile
         ))
         const objectsInfo = JSON.parse(objectsStr)
         this.populateObjects(
-          objectsInfo.bucketName, objectsInfo.objects
+          objectsInfo.accessKeyId,
+          objectsInfo.bucketName,
+          objectsInfo.objects
         )
       }
     }
   }
 
-  populateBuckets (buckets) {
-    this._buckets.clear()
-    for (const b of buckets.Buckets) {
-      this._buckets.set(b.Name, new S3Bucket())
+  populateBuckets (accessKeyId, buckets) {
+    if (!this._profiles.has(accessKeyId)) {
+      this._profiles.set(accessKeyId, new Map())
     }
 
-    this.bucketsOwnerID = buckets.Owner.ID
-    this.bucketsOwnerName = buckets.Owner.DisplayName
+    const bucketsMap = this._profiles.get(accessKeyId)
+    for (const b of buckets.Buckets) {
+      bucketsMap.set(b.Name, new S3Bucket())
+      this._bucketOwnerInfo.set(b.Name, buckets.Owner)
+    }
   }
 
-  populateObjects (bucketName, objects) {
-    const bucket = this._buckets.get(bucketName)
+  populateObjects (accessKeyId, bucketName, objects) {
+    const bucketMap = this._profiles.get(accessKeyId)
+    if (!bucketMap) throw new Error('invalid accessKeyId')
+
+    const bucket = bucketMap.get(bucketName)
     if (!bucket) throw new Error('invalid bucketName')
 
     for (const c of objects.Contents) {
@@ -206,6 +231,63 @@ class FakeS3 {
       )
       bucket.addObject(obj)
     }
+  }
+
+  _findBucket (bucket) {
+    for (const map of this._profiles.values()) {
+      if (map.has(bucket)) return map.get(bucket)
+    }
+    return null
+  }
+
+  async getFiles (bucket) {
+    const s3bucket = this._findBucket(bucket)
+    if (!s3bucket) {
+      return {
+        objects: []
+      }
+    }
+
+    const objects = s3bucket.getObjects()
+      .filter((o) => {
+        return o.key.startsWith(this.prefix)
+      })
+
+    return { objects }
+  }
+
+  async waitForFiles (bucket, count) {
+    const deadline = Date.now() + this.waitTimeout
+
+    while (Date.now() <= deadline) {
+      const info = await this.getFiles(bucket)
+      if (info.objects.length === count) {
+        return info
+      }
+
+      await sleep(100)
+    }
+
+    return null
+  }
+
+  setupBuckets () {
+    if (this.initialBuckets.length === 0) {
+      return
+    }
+
+    const bucketsMap = new Map()
+    this._profiles.set('default', bucketsMap)
+
+    for (const bucket of this.initialBuckets) {
+      bucketsMap.set(bucket, new S3Bucket())
+    }
+  }
+
+  async close () {
+    await util.promisify((cb) => {
+      this.httpServer.close(cb)
+    })()
   }
 
   _handlePutObject (req, buf) {
@@ -227,7 +309,10 @@ class FakeS3 {
       throw new Error('putObjectMultipart not supported')
     }
 
-    const s3bucket = this._buckets.get(bucket)
+    // For the upload use case we always write into the default
+    // profile and not into the profiles hydrated from cache.
+    const bucketsMap = this._profiles.get('default')
+    const s3bucket = bucketsMap ? bucketsMap.get(bucket) : null
     if (!s3bucket) {
       const err = new Error('The specified bucket does not exist')
       err.code = 'NoSuchBucket'
@@ -243,8 +328,27 @@ class FakeS3 {
     return obj
   }
 
-  _handleListBuckets () {
-    const buckets = [...this._buckets.keys()]
+  _getBucketsMap (req) {
+    const authHeader = req.headers['authorization']
+    const match = authHeader.match(stripCreds)
+    let profile = 'default'
+    if (match) {
+      const creds = match[0].slice(11)
+      const accessKeyId = creds.split('/')[0]
+      profile = accessKeyId
+    }
+
+    if (this._profiles.has(profile)) {
+      return this._profiles.get(profile)
+    }
+
+    return this._profiles.get('default')
+  }
+
+  _handleListBuckets (req) {
+    const bucketsMap = this._getBucketsMap(req)
+    const buckets = bucketsMap ? [...bucketsMap.keys()] : []
+
     let bucketsXML = ''
 
     const start = Math.floor(this.start / 1000)
@@ -257,13 +361,17 @@ class FakeS3 {
       `
     }
 
+    const ownerInfo = this._bucketOwnerInfo.get(buckets[0])
+    const displayName = ownerInfo ? ownerInfo.DisplayName : 'admin'
+    const id = ownerInfo ? ownerInfo.ID : '1'
+
     return `<ListBucketsOutput>
       <Buckets>
         ${bucketsXML}
       </Buckets>
       <Owner>
-        <DisplayName>${this.bucketsOwnerName}</DisplayName>
-        <ID>${this.bucketsOwnerID}</ID>
+        <DisplayName>${displayName}</DisplayName>
+        <ID>${id}</ID>
       </Owner>
     </ListBucketsOutput>`
   }
@@ -338,10 +446,8 @@ class FakeS3 {
     }
 
     const bucket = parts[1]
-
-    // TODO: handle parsedUrl.query.delimiter
-
-    const s3bucket = this._buckets.get(bucket)
+    const bucketsMap = this._getBucketsMap(req)
+    const s3bucket = bucketsMap ? bucketsMap.get(bucket) : null
     if (!s3bucket) {
       const err = new Error('The specified bucket does not exist')
       err.code = 'NoSuchBucket'
@@ -493,49 +599,6 @@ class FakeS3 {
         ), res)
       }
     })
-  }
-
-  async getFiles (bucket) {
-    const s3bucket = this._buckets.get(bucket)
-    if (!s3bucket) {
-      return {
-        objects: []
-      }
-    }
-
-    const objects = s3bucket.getObjects()
-      .filter((o) => {
-        return o.key.startsWith(this.prefix)
-      })
-
-    return { objects }
-  }
-
-  async waitForFiles (bucket, count) {
-    const deadline = Date.now() + this.waitTimeout
-
-    while (Date.now() <= deadline) {
-      const info = await this.getFiles(bucket)
-      if (info.objects.length === count) {
-        return info
-      }
-
-      await sleep(100)
-    }
-
-    return null
-  }
-
-  setupBuckets () {
-    for (const bucket of this.initialBuckets) {
-      this._buckets.set(bucket, new S3Bucket())
-    }
-  }
-
-  async close () {
-    await util.promisify((cb) => {
-      this.httpServer.close(cb)
-    })()
   }
 }
 

@@ -3,6 +3,7 @@
 const assert = require('assert')
 const util = require('util')
 
+const uuid = require('uuid')
 const rimraf = require('@pre-bundled/rimraf')
 const tape = require('@pre-bundled/tape')
 const tapeHarness = require('tape-harness')
@@ -28,6 +29,8 @@ class TestHarness {
     /** @type AWS.S3 */
     this.s3 = null
 
+    this.accessKeyId = uuid()
+
     this.cacheServer = null
     this.cacheS3 = null
   }
@@ -49,7 +52,7 @@ class TestHarness {
     this.cacheS3 = new AWS.S3({
       endpoint: `http://${this.cacheServer.hostPort}`,
       sslEnabled: false,
-      accessKeyId: '123',
+      accessKeyId: this.accessKeyId,
       secretAccessKey: 'abc',
       s3ForcePathStyle: true
     })
@@ -62,7 +65,7 @@ class TestHarness {
     this.s3 = new AWS.S3({
       endpoint: `http://${this.server.hostPort}`,
       sslEnabled: false,
-      accessKeyId: '123',
+      accessKeyId: this.accessKeyId,
       secretAccessKey: 'abc',
       s3ForcePathStyle: true
     })
