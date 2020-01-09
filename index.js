@@ -16,11 +16,12 @@ const readdirP = util.promisify(fs.readdir)
 const stripCreds = /Credential=([\w-/0-9a-zA-Z]+),/
 
 class S3Object {
-  constructor (bucket, key, content, md5, contentLength) {
+  constructor (bucket, key, content, lastModified, md5, contentLength) {
     this.type = 's3-object'
     this.bucket = bucket
     this.key = key
     this.content = content
+    this.lastModified = lastModified
     this.md5 = md5
     this.contentLength = contentLength
     // TODO: this.metadata
@@ -226,6 +227,7 @@ class FakeS3 {
         bucketName,
         c.Key,
         '',
+        c.LastModified,
         c.ETag,
         c.Size
       )
@@ -323,7 +325,10 @@ class FakeS3 {
     const md5Hash = crypto.createHash('md5')
     md5Hash.update(buf)
     const md5 = md5Hash.digest('hex')
-    const obj = new S3Object(bucket, key, buf, md5, buf.length)
+    const lastModified = new Date().toISOString()
+    const obj = new S3Object(
+      bucket, key, buf, lastModified, md5, buf.length
+    )
     s3bucket.addObject(obj)
     return obj
   }
@@ -493,11 +498,10 @@ class FakeS3 {
       if (o.type === 's3-object') {
         contentXml += `<Contents>
           <Key>${o.key}</Key>
-          <!-- TODO LastModified -->
+          <LastModified>${o.lastModified}</LastModified>
           <ETag>${o.md5}</ETag>
           <Size>${o.contentLength}</Size>
           <StorageClass>STANDARD</StorageClass>
-          <!-- TODO OWNER -->
         </Contents>`
       } else if (o.type === 's3-common-prefix') {
         commonPrefixes += `<CommonPrefixes>
