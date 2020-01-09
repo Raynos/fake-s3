@@ -16,11 +16,19 @@ async function main () {
   await fakeS3.populateFromCache(cachePath)
 
   if (process.argv[2] !== 'download') {
-    console.log('buckets', [...fakeS3._buckets.keys()])
+    const profiles = fakeS3._profiles
+    const allBuckets = []
+    for (const p of profiles.values()) {
+      allBuckets.push(...p.keys())
+    }
+
+    console.log('buckets', allBuckets)
 
     let totalObjects = 0
-    for (const b of fakeS3._buckets.values()) {
-      totalObjects += b._objects.size
+    for (const p of fakeS3._profiles.values()) {
+      for (const b of p.values()) {
+        totalObjects += b._objects.size
+      }
     }
     console.log('objects count', totalObjects)
     return
@@ -28,7 +36,8 @@ async function main () {
 
   // Cache buckets
   const buckets = await s3.listBuckets().promise()
-  await fakeS3.cacheBucketsToDisk(cachePath, buckets)
+  const accessKeyId = s3.config.credentials.accessKeyId
+  await fakeS3.cacheBucketsToDisk(cachePath, accessKeyId, buckets)
 
   await fakeS3.populateFromCache(cachePath)
 
@@ -75,9 +84,14 @@ async function main () {
       allObjects.push(...resp.Contents)
     } while (resp && resp.IsTruncated)
 
-    await fakeS3.cacheObjectsToDisk(cachePath, bucketName, {
-      Contents: allObjects
-    })
+    await fakeS3.cacheObjectsToDisk(
+      cachePath,
+      accessKeyId,
+      bucketName,
+      {
+        Contents: allObjects
+      }
+    )
   }
 }
 
