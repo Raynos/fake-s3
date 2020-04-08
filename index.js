@@ -392,6 +392,7 @@ class FakeS3 {
     }
 
     let offset = 0
+    let startAfter = parsedUrl.query['start-after']
     const prevToken = parsedUrl.query['continuation-token']
     if (prevToken) {
       const tokenInfo = this.tokens[prevToken]
@@ -399,6 +400,19 @@ class FakeS3 {
 
       if (!tokenInfo) throw new Error('invalid next token')
       offset = tokenInfo.offset
+
+      if (tokenInfo.startAfter) {
+        startAfter = tokenInfo.startAfter
+      }
+    }
+
+    if (startAfter) {
+      const index = rawObjects.findIndex((o) => {
+        return o.key === startAfter
+      })
+      if (index >= 0) {
+        rawObjects = rawObjects.slice(index + 1)
+      }
     }
 
     const end = offset + maxKeys
@@ -408,7 +422,7 @@ class FakeS3 {
     let nextToken
     if (truncated) {
       nextToken = cuuid()
-      this.tokens[nextToken] = { offset: end }
+      this.tokens[nextToken] = { offset: end, startAfter: startAfter }
     }
 
     return {
@@ -464,16 +478,6 @@ class FakeS3 {
     objects.sort((a, b) => {
       return a.key < b.key ? -1 : 1
     })
-
-    const startAfter = parsedUrl.query['start-after']
-    if (startAfter) {
-      const index = objects.findIndex((o) => {
-        return o.key === startAfter
-      })
-      if (index >= 0) {
-        objects = objects.slice(index + 1)
-      }
-    }
 
     const prefix = parsedUrl.query.prefix
     if (prefix) {
