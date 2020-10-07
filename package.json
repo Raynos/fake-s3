@@ -18,8 +18,6 @@
   ],
   "dependencies": {},
   "binDependencies": {
-    "nyc": "14.1.1",
-    "opn": "1.0.1",
     "standard": "13.1.0"
   },
   "devDependencies": {
@@ -37,18 +35,7 @@
     }
   ],
   "scripts": {
-    "lint": "npr standard",
-    "test": "npm run lint && npm run cover -s && npm run check-cover",
-    "cover": "npr nyc -r html -r text -- node test/index.js",
-    "check-cover": "npr nyc check-coverage --branches=80 --lines=90 --functions=100",
-    "view-cover": "npr opn ./coverage/index.html"
+    "test": "npr standard && node test/index.js"
   },
-  "engine": {
-    "node": ">= 0.8.x"
-  },
-  "pre-commit": [
-    "test"
-  ],
-  "pre-commit.silent": true,
   "ngen-version": "5.1.0"
 }
