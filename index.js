@@ -163,7 +163,7 @@ class FakeS3 {
 
     const addr = this.httpServer.address()
     const port = (addr && typeof addr === 'object')
-      ? addr.port  : -1
+      ? addr.port : -1
     this.hostPort = `localhost:${port}`
     this.setupBuckets()
 
@@ -430,6 +430,7 @@ class FakeS3 {
   _handlePutObject (req, buf) {
     const reqUrl = req.url || ''
 
+    /* eslint-disable-next-line node/no-deprecated-api */
     const parsedUrl = url.parse(reqUrl, true)
     const parts = (parsedUrl.pathname || '').split('/')
     if (parts.length < 3 || parts[0] !== '') {
