@@ -18,15 +18,17 @@
   ],
   "dependencies": {},
   "binDependencies": {
-    "standard": "13.1.0"
+    "standard": "13.1.0",
+    "typescript": "4.0.2"
   },
   "devDependencies": {
     "@pre-bundled/rimraf": "3.0.0-patch-1",
     "@pre-bundled/tape": "4.11.0",
+    "@types/node": "14.10.1",
     "aws-sdk": "2.507.0",
     "npm-bin-deps": "1.3.2",
-    "tape-harness": "4.0.0",
-    "uuid": "3.3.3"
+    "tape-harness": "5.0.0",
+    "uuid": "8.3.1"
   },
   "licenses": [
     {
@@ -35,7 +37,7 @@
     }
   ],
   "scripts": {
-    "test": "npr standard && node test/index.js"
+    "test": "npr tsc -p . && npr standard && node test/index.js"
   },
   "ngen-version": "5.1.0"
 }
