@@ -1,9 +1,11 @@
+// @ts-check
 'use strict'
 
+/** @type {import('assert')} */
 const assert = require('assert')
 const util = require('util')
 
-const uuid = require('uuid')
+const uuid = require('uuid').v4
 const rimraf = require('@pre-bundled/rimraf')
 const tape = require('@pre-bundled/tape')
 const tapeHarness = require('tape-harness')
@@ -12,21 +14,27 @@ const AWS = require('aws-sdk')
 const FakeS3 = require('../index.js')
 
 class TestHarness {
+  /**
+   * @param {{
+   *    buckets?: string[],
+   *    waitTimeout?: number,
+   *    port?: number
+   * }} options
+   */
   constructor (options = {}) {
     this.buckets = options.buckets || ['my-bucket']
 
+    const port = 'port' in options ? options.port : undefined
     const opts = {
       prefix: 'foo/',
       waitTimeout: options.waitTimeout,
-      buckets: this.buckets
-    }
-    if ('port' in options) {
-      opts.port = options.port
+      buckets: this.buckets,
+      port: port
     }
 
     this.server = new FakeS3(opts)
 
-    /** @type AWS.S3 */
+    /** @type {import('aws-sdk').S3 | null} */
     this.s3 = null
 
     this.accessKeyId = uuid()
@@ -35,6 +43,14 @@ class TestHarness {
     this.cacheS3 = null
   }
 
+  getS3 () {
+    if (!this.s3) throw new Error('bootstrap() first')
+    return this.s3
+  }
+
+  /**
+   * @param {string} cachePath
+   */
   getCacheServer (cachePath) {
     assert(cachePath, 'cachePath required')
     if (this.cacheServer) return this.cacheServer
@@ -48,9 +64,12 @@ class TestHarness {
 
   getCacheS3 () {
     if (this.cacheS3) return this.cacheS3
+    if (!this.cacheServer) {
+      throw new Error('Cache server not started')
+    }
 
     this.cacheS3 = new AWS.S3({
-      endpoint: `http://${this.cacheServer.hostPort}`,
+      endpoint: `http://${this.cacheServer.getHostPort()}`,
       sslEnabled: false,
       accessKeyId: this.accessKeyId,
       secretAccessKey: 'abc',
@@ -71,27 +90,43 @@ class TestHarness {
     })
   }
 
+  /**
+   * @param {string} bucket
+   * @param {string} key
+   * @param {Buffer | string} body
+   */
   async uploadFileForBucket (bucket, key, body) {
-    return this.s3.upload({
+    return this.getS3().upload({
       Bucket: bucket,
       Key: key,
       Body: body
     }).promise()
   }
 
+  /**
+   * @param {string} key
+   * @param {Buffer | string} body
+   */
   async uploadFile (key, body) {
     const bucket = this.buckets[0] || 'my-bucket'
-    return this.s3.upload({
+    return this.getS3().upload({
       Bucket: bucket,
       Key: key,
       Body: body
     }).promise()
   }
 
+  /**
+   * @param {string} bucket
+   * @param {number} count
+   */
   async waitForFiles (bucket, count) {
     return this.server.waitForFiles(bucket, count)
   }
 
+  /**
+   * @param {string} bucket
+   */
   async getFiles (bucket) {
     return this.server.getFiles(bucket)
   }
@@ -111,16 +146,5 @@ class TestHarness {
   }
 }
 
-/**
- * @type {((
- *   str: string,
- *   opts: object,
- *   fn: (harness: TestHarness, tape: any) => void
- * ) => void) &
- * ((
- *   str: string,
- *   fn: (harness: TestHarness, tape: any) => void
- * ) => void)}
- */
 TestHarness.test = tapeHarness(tape, TestHarness)
 module.exports = TestHarness

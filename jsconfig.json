@@ -11,5 +11,6 @@
     "types/**/*.d.ts",
     "index.js",
     "test/**/*.js"
-  ]
+  ],
+  "exclude": ["node_modules"]
 }

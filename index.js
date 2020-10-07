@@ -1,8 +1,10 @@
+// @ts-check
 'use strict'
 
 const http = require('http')
 const util = require('util')
 const url = require('url')
+/** @type {import('assert')} */
 const assert = require('assert')
 const crypto = require('crypto')
 const path = require('path')
@@ -15,8 +17,48 @@ const readdirP = util.promisify(fs.readdir)
 
 const stripCreds = /Credential=([\w-/0-9a-zA-Z]+),/
 
+/**
+ * @typedef {(err?: Error) => void} Callback
+ * @typedef {{
+ *    message: string,
+ *    code?: string,
+ *    resource?: string
+ * }} S3Error
+ * @typedef {{ DisplayName: string, ID: string }} BucketOwner
+ * @typedef {{ Name: string, CreationDate: Date }} S3BucketItem
+ * @typedef {{
+ *    Key: string,
+ *    LastModified: Date,
+ *    ETag: string,
+ *    Size: number,
+ *    StorageClass: string
+ * }} ObjectContent
+ */
+
+class NoSuchBucketError extends Error {
+  /**
+   * @param {string} message
+   * @param {string} bucket
+   */
+  constructor (message, bucket) {
+    super(message)
+
+    this.code = 'NoSuchBucket'
+    this.resource = bucket
+  }
+}
+
 class S3Object {
+  /**
+   * @param {string} bucket
+   * @param {string} key
+   * @param {string | Buffer} content
+   * @param {string} lastModified
+   * @param {string} md5
+   * @param {number} contentLength
+   */
   constructor (bucket, key, content, lastModified, md5, contentLength) {
+    /** @type {"s3-object"} */
     this.type = 's3-object'
     this.bucket = bucket
     this.key = key
@@ -29,7 +71,9 @@ class S3Object {
 }
 
 class CommonPrefix {
+  /** @param {string} prefix */
   constructor (prefix) {
+    /** @type {"s3-common-prefix"} */
     this.type = 's3-common-prefix'
     this.prefix = prefix
   }
@@ -37,19 +81,33 @@ class CommonPrefix {
 
 class S3Bucket {
   constructor () {
+    /**
+     * @type {Map<string, S3Object>}
+     */
     this._objects = new Map()
   }
 
+  /** @param {S3Object} obj */
   addObject (obj) {
     this._objects.set(obj.key, obj)
   }
 
   getObjects () {
-    return new Array(...this._objects.values())
+    return [...this._objects.values()]
   }
 }
 
 class FakeS3 {
+  /**
+   * @param {{
+   *    prefix: string,
+   *    buckets?: string[],
+   *    cachePath?: string,
+   *    hostname?: string,
+   *    port?: number,
+   *    waitTimeout?: number
+   * }} options
+   */
   constructor (options) {
     assert(options, 'options required')
     assert('prefix' in options, 'options.prefix required')
@@ -63,6 +121,7 @@ class FakeS3 {
     this.waitTimeout = options.waitTimeout || 5 * 1000
 
     this.touchedCache = false
+    /** @type {string[]} */
     this.knownCaches = []
 
     this.httpServer = http.createServer()
@@ -74,9 +133,20 @@ class FakeS3 {
 
     this.start = Date.now()
 
+    /**
+     * @type {Map<string, Map<string, S3Bucket>>}
+     */
     this._profiles = new Map()
+    /**
+     * @type {Map<string, BucketOwner>}
+     */
     this._bucketOwnerInfo = new Map()
 
+    /** @type {Record<string, {
+     *      offset: number,
+     *      startAfter?: string
+     *  }>}
+     */
     this.tokens = {}
   }
 
@@ -85,11 +155,16 @@ class FakeS3 {
       this._handleServerRequest(req, res)
     })
 
-    await util.promisify((cb) => {
+    await util.promisify((
+      /** @type {Callback} */ cb
+    ) => {
       this.httpServer.listen(this.requestPort, cb)
     })()
 
-    this.hostPort = `localhost:${this.httpServer.address().port}`
+    const addr = this.httpServer.address()
+    const port = (addr && typeof addr === 'object')
+      ? addr.port  : -1
+    this.hostPort = `localhost:${port}`
     this.setupBuckets()
 
     if (this.cachePath) {
@@ -97,6 +172,12 @@ class FakeS3 {
     }
   }
 
+  getHostPort () {
+    if (!this.hostPort) return ''
+    return this.hostPort
+  }
+
+  /** @param {string} filePath */
   async tryMkdir (filePath) {
     try {
       await mkdirP(filePath)
@@ -107,6 +188,12 @@ class FakeS3 {
 
   /**
    * Can cache the output of `listBuckets()` directly.
+   * @param {string} filePath
+   * @param {string} accessKeyId
+   * @param {{
+   *    Buckets?: Partial<S3BucketItem>[],
+   *    Owner?: Partial<BucketOwner>
+   * }} buckets
    */
   async cacheBucketsToDisk (filePath, accessKeyId, buckets) {
     this.touchedCache = true
@@ -130,6 +217,12 @@ class FakeS3 {
   /**
    * Recommended to exhaustively get all objects and combine
    * them and then call this.
+   * @param {string} filePath
+   * @param {string} accessKeyId
+   * @param {string} bucketName
+   * @param {{
+   *    Contents?: Partial<ObjectContent>[]
+   * }} objects
    */
   async cacheObjectsToDisk (filePath, accessKeyId, bucketName, objects) {
     this.touchedCache = true
@@ -153,6 +246,9 @@ class FakeS3 {
     )
   }
 
+  /**
+   * @param {string} filePath
+   */
   async populateFromCache (filePath) {
     let bucketFiles = null
     try {
@@ -165,13 +261,11 @@ class FakeS3 {
       for (const fileName of bucketFiles) {
         const bucketStr = await readFileP(path.join(
           filePath, 'buckets', fileName
-        ))
+        ), 'utf8')
         const buckets = JSON.parse(bucketStr)
         this.populateBuckets(buckets.accessKeyId, buckets.data)
       }
     }
-
-    // TODO: fix me
 
     let objectDirs = null
     try {
@@ -192,7 +286,7 @@ class FakeS3 {
       for (const objectFile of objectFiles) {
         const objectsStr = await readFileP(path.join(
           filePath, 'objects', bucketName, objectFile
-        ))
+        ), 'utf8')
         const objectsInfo = JSON.parse(objectsStr)
         this.populateObjects(
           objectsInfo.accessKeyId,
@@ -203,18 +297,39 @@ class FakeS3 {
     }
   }
 
+  /**
+   * @param {string} accessKeyId
+   * @param {{
+   *    Owner: BucketOwner,
+   *    Buckets: Array<{
+   *        Name: string
+   *    }>
+   * }} buckets
+   */
   populateBuckets (accessKeyId, buckets) {
-    if (!this._profiles.has(accessKeyId)) {
-      this._profiles.set(accessKeyId, new Map())
+    let bucketsMap = this._profiles.get(accessKeyId)
+    if (!bucketsMap) {
+      bucketsMap = new Map()
+      this._profiles.set(accessKeyId, bucketsMap)
     }
-
-    const bucketsMap = this._profiles.get(accessKeyId)
     for (const b of buckets.Buckets) {
       bucketsMap.set(b.Name, new S3Bucket())
       this._bucketOwnerInfo.set(b.Name, buckets.Owner)
     }
   }
 
+  /**
+   * @param {string} accessKeyId
+   * @param {string} bucketName
+   * @param {{
+   *    Contents: Array<{
+   *        Key: string,
+   *        LastModified: string,
+   *        ETag: string,
+   *        Size: number
+   *    }>
+   * }} objects
+   */
   populateObjects (accessKeyId, bucketName, objects) {
     const bucketMap = this._profiles.get(accessKeyId)
     if (!bucketMap) throw new Error('invalid accessKeyId')
@@ -235,13 +350,22 @@ class FakeS3 {
     }
   }
 
-  _findBucket (bucket) {
+  /**
+   * @param {string} bucketName
+   * @returns {S3Bucket | null}
+   */
+  _findBucket (bucketName) {
     for (const map of this._profiles.values()) {
-      if (map.has(bucket)) return map.get(bucket)
+      const bucket = map.get(bucketName)
+      if (bucket) return bucket
     }
     return null
   }
 
+  /**
+   * @param {string} bucket
+   * @returns {Promise<{ objects: S3Object[] }>}
+   */
   async getFiles (bucket) {
     const s3bucket = this._findBucket(bucket)
     if (!s3bucket) {
@@ -258,6 +382,10 @@ class FakeS3 {
     return { objects }
   }
 
+  /**
+   * @param {string} bucket
+   * @param {number} count
+   */
   async waitForFiles (bucket, count) {
     const deadline = Date.now() + this.waitTimeout
 
@@ -287,15 +415,23 @@ class FakeS3 {
   }
 
   async close () {
-    await util.promisify((cb) => {
+    await util.promisify((
+      /** @type {Callback} */ cb
+    ) => {
       this.httpServer.close(cb)
     })()
   }
 
+  /**
+   *
+   * @param {import('http').IncomingMessage} req
+   * @param {Buffer} buf
+   */
   _handlePutObject (req, buf) {
-    /* eslint-disable-next-line node/no-deprecated-api */
-    const parsedUrl = url.parse(req.url, true)
-    const parts = parsedUrl.pathname.split('/')
+    const reqUrl = req.url || ''
+
+    const parsedUrl = url.parse(reqUrl, true)
+    const parts = (parsedUrl.pathname || '').split('/')
     if (parts.length < 3 || parts[0] !== '') {
       throw new Error('invalid url, expected /:bucket/:key')
     }
@@ -316,9 +452,9 @@ class FakeS3 {
     const bucketsMap = this._profiles.get('default')
     const s3bucket = bucketsMap ? bucketsMap.get(bucket) : null
     if (!s3bucket) {
-      const err = new Error('The specified bucket does not exist')
-      err.code = 'NoSuchBucket'
-      err.resource = bucket
+      const err = new NoSuchBucketError(
+        'The specified bucket does not exist', bucket
+      )
       throw err
     }
 
@@ -333,8 +469,11 @@ class FakeS3 {
     return obj
   }
 
+  /**
+   * @param {import('http').IncomingMessage} req
+   */
   _getBucketsMap (req) {
-    const authHeader = req.headers['authorization']
+    const authHeader = req.headers['authorization'] || ''
     const match = authHeader.match(stripCreds)
     let profile = 'default'
     if (match) {
@@ -350,6 +489,9 @@ class FakeS3 {
     return this._profiles.get('default')
   }
 
+  /**
+   * @param {import('http').IncomingMessage} req
+   */
   _handleListBuckets (req) {
     const bucketsMap = this._getBucketsMap(req)
     const buckets = bucketsMap ? [...bucketsMap.keys()] : []
@@ -381,11 +523,24 @@ class FakeS3 {
     </ListBucketsOutput>`
   }
 
+  /**
+   * @param {import('url').UrlWithParsedQuery} parsedUrl
+   * @param {(S3Object | CommonPrefix)[]} rawObjects
+   * @returns {{
+   *      objects: (S3Object | CommonPrefix)[]
+   *      prevToken: string | undefined,
+   *      maxKeys: number,
+   *      nextToken: string | undefined
+   * }}
+   */
   paginate (parsedUrl, rawObjects) {
     let maxKeys = 1000
 
     if (parsedUrl.query['max-keys']) {
-      const queryMaxKeys = parseInt(parsedUrl.query['max-keys'], 10)
+      let maxKeysStr = parsedUrl.query['max-keys']
+      if (Array.isArray(maxKeysStr)) maxKeysStr = maxKeysStr[0]
+
+      const queryMaxKeys = parseInt(maxKeysStr, 10)
       if (queryMaxKeys < maxKeys) {
         maxKeys = queryMaxKeys
       }
@@ -393,7 +548,9 @@ class FakeS3 {
 
     let offset = 0
     let startAfter = parsedUrl.query['start-after']
-    const prevToken = parsedUrl.query['continuation-token']
+    if (Array.isArray(startAfter)) startAfter = startAfter[0]
+    let prevToken = parsedUrl.query['continuation-token']
+    if (Array.isArray(prevToken)) prevToken = prevToken[0]
     if (prevToken) {
       const tokenInfo = this.tokens[prevToken]
       delete this.tokens[prevToken]
@@ -408,6 +565,7 @@ class FakeS3 {
 
     if (startAfter) {
       const index = rawObjects.findIndex((o) => {
+        if (o.type === 's3-common-prefix') return
         return o.key === startAfter
       })
       if (index >= 0) {
@@ -422,7 +580,10 @@ class FakeS3 {
     let nextToken
     if (truncated) {
       nextToken = cuuid()
-      this.tokens[nextToken] = { offset: end, startAfter: startAfter }
+      this.tokens[nextToken] = {
+        offset: end,
+        startAfter: startAfter
+      }
     }
 
     return {
@@ -433,6 +594,12 @@ class FakeS3 {
     }
   }
 
+  /**
+   * @param {S3Object[]} objects
+   * @param {string} delimiter
+   * @param {string} [prefix]
+   * @returns {(S3Object | CommonPrefix)[]}
+   */
   splitObjects (objects, delimiter, prefix) {
     const prefixSet = new Set()
 
@@ -456,10 +623,14 @@ class FakeS3 {
     return out
   }
 
+  /**
+   *
+   * @param {import('http').IncomingMessage} req
+   */
   _handleGetObjectsV2 (req) {
     /* eslint-disable-next-line node/no-deprecated-api */
-    const parsedUrl = url.parse(req.url, true)
-    const parts = parsedUrl.pathname.split('/')
+    const parsedUrl = url.parse(req.url || '', true)
+    const parts = (parsedUrl.pathname || '').split('/')
     if (parts.length > 2 || parts[0] !== '') {
       throw new Error('invalid url, expected /:bucket')
     }
@@ -468,9 +639,9 @@ class FakeS3 {
     const bucketsMap = this._getBucketsMap(req)
     const s3bucket = bucketsMap ? bucketsMap.get(bucket) : null
     if (!s3bucket) {
-      const err = new Error('The specified bucket does not exist')
-      err.code = 'NoSuchBucket'
-      err.resource = bucket
+      const err = new NoSuchBucketError(
+        'The specified bucket does not exist', bucket
+      )
       throw err
     }
 
@@ -479,22 +650,29 @@ class FakeS3 {
       return a.key < b.key ? -1 : 1
     })
 
-    const prefix = parsedUrl.query.prefix
+    let prefix = parsedUrl.query.prefix
+    if (Array.isArray(prefix)) prefix = prefix[0]
     if (prefix) {
+      const filterPrefix = prefix
       objects = objects.filter((o) => {
-        return o.key.startsWith(prefix)
+        return o.key.startsWith(filterPrefix)
       })
     }
 
-    const delimiter = parsedUrl.query.delimiter
+    let delimiter = parsedUrl.query.delimiter
+    /** @type {(S3Object | CommonPrefix)[]} */
+    let allObjects
     if (delimiter) {
-      objects = this.splitObjects(objects, delimiter, prefix)
+      if (Array.isArray(delimiter)) delimiter = delimiter[0]
+      allObjects = this.splitObjects(objects, delimiter, prefix)
+    } else {
+      allObjects = objects
     }
 
     const {
       prevToken, nextToken, maxKeys,
       objects: resultObjects
-    } = this.paginate(parsedUrl, objects)
+    } = this.paginate(parsedUrl, allObjects)
 
     let contentXml = ''
     let commonPrefixes = ''
@@ -543,6 +721,9 @@ class FakeS3 {
     </ListObjectsV2Output>`
   }
 
+  /**
+   * @param {S3Error} err
+   */
   _buildError (err) {
     let resourceStr = ''
     if (err.resource) {
@@ -557,13 +738,22 @@ class FakeS3 {
     </Error>`
   }
 
+  /**
+   * @param {S3Error} err
+   * @param {import('http').ServerResponse} res
+   */
   _writeError (err, res) {
     const xml = this._buildError(err)
     res.writeHead(500, { 'Content-Type': 'text/xml' })
     res.end(xml)
   }
 
+  /**
+   * @param {import('http').IncomingMessage} req
+   * @param {import('http').ServerResponse} res
+   */
   _handleServerRequest (req, res) {
+    /** @type {Buffer[]} */
     const buffers = []
     req.on('data', (chunk) => {
       buffers.push(chunk)
@@ -584,7 +774,7 @@ class FakeS3 {
       } else if (req.method === 'GET' && req.url === '/') {
         let xml
         try {
-          xml = this._handleListBuckets(req, bodyBuf)
+          xml = this._handleListBuckets(req)
         } catch (err) {
           return this._writeError(err, res)
         }
@@ -594,7 +784,7 @@ class FakeS3 {
       } else if (req.method === 'GET') {
         let xml
         try {
-          xml = this._handleGetObjectsV2(req, bodyBuf)
+          xml = this._handleGetObjectsV2(req)
         } catch (err) {
           return this._writeError(err, res)
         }
@@ -612,6 +802,10 @@ class FakeS3 {
 
 module.exports = FakeS3
 
+/**
+ *
+ * @param {number} n
+ */
 async function sleep (n) {
   return new Promise((resolve) => {
     setTimeout(() => {
@@ -620,6 +814,10 @@ async function sleep (n) {
   })
 }
 
+/**
+ *
+ * @param {string} str
+ */
 function escapeXML (str) {
   return str
     .replace(/&/g, '&amp;')

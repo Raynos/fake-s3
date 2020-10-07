@@ -21,6 +21,7 @@ autom4te.cache/
 # Better to let npm install these from the package.json defintion
 # rather than maintain this manually
 node_modules/
+package-lock.json
 
 # Packages #
 ############
