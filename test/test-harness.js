@@ -139,7 +139,9 @@ class TestHarness {
     }
 
     for (const cachePath of this.server.knownCaches) {
-      await util.promisify((cb) => {
+      await util.promisify((
+        /** @type {(err?: Error) => void} */ cb
+      ) => {
         rimraf(cachePath, cb)
       })()
     }
