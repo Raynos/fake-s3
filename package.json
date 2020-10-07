@@ -37,7 +37,8 @@
     }
   ],
   "scripts": {
-    "test": "npr tsc -p . && npr standard && node test/index.js"
+    "tsc": "npr tsc -p jsconfig.json",
+    "test": "npr tsc -p jsconfig.json && npr standard && node test/index.js"
   },
   "ngen-version": "5.1.0"
 }
