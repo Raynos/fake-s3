@@ -6,7 +6,7 @@
     "noEmit": true,
     "module": "commonjs",
     "allowJs": true,
-    "checkJs": false,
+    "checkJs": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
     "noUnusedLocals": true,
