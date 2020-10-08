@@ -2,11 +2,22 @@
 
 const path = require('path')
 const os = require('os')
+/** @type {import('assert')} */
+const coreAssert = require('assert')
+
+/**
+ * @typedef {{
+ *    message: string,
+ *    statusCode: number,
+ *    code: string
+ * }} StatusError
+ */
 
 const { test } = require('./test-harness')
 
-test('fakeS3 is a server', async (harness, assert) => {
+test('fakeS3 is a server', (harness, assert) => {
   assert.ok(harness.server.hostPort)
+  assert.end()
 })
 
 test('fakeS3 supports uploading & waiting', {
@@ -20,6 +31,7 @@ test('fakeS3 supports uploading & waiting', {
 
   const files = await harness.waitForFiles('my-bucket', 1)
 
+  coreAssert(files, 'files must exist')
   assert.ok(files)
   assert.equal(files.objects.length, 1)
 
@@ -36,7 +48,9 @@ test('fakeS3 uploading without buckets', {
     await harness.uploadFile(
       'foo/my-file', 'some text'
     )
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(err.message,
       'The specified bucket does not exist')
     assert.equal(err.statusCode, 500)
@@ -71,6 +85,7 @@ test('fakeS3 supports parallel waiting', {
   assert.ok(resp)
   assert.ok(resp.ETag)
 
+  coreAssert(files)
   assert.ok(files)
   assert.equal(files.objects.length, 2)
 
@@ -79,7 +94,7 @@ test('fakeS3 supports parallel waiting', {
   assert.equal(obj.key, 'foo/my-file')
   assert.equal(obj.content.toString(), 'some text')
 
-  const allFiles = await harness.getFiles('my-bucket')
+  const allFiles = harness.getFiles('my-bucket')
   assert.equal(allFiles.objects.length, 2)
 })
 
@@ -95,6 +110,7 @@ test('fakeS3 supports prefix', {
   assert.ok(resp)
   assert.ok(resp.ETag)
 
+  coreAssert(files)
   assert.ok(files)
   assert.equal(files.objects.length, 1)
 
@@ -106,17 +122,20 @@ test('fakeS3 supports prefix', {
 
 test('listen on specific port', {
   port: 14367
-}, async (harness, assert) => {
+}, (harness, assert) => {
   assert.equal(harness.server.hostPort, 'localhost:14367')
+  assert.end()
 })
 
 test('createBucket not supported', {
 }, async (harness, assert) => {
   try {
-    await harness.s3.createBucket({
+    await harness.getS3().createBucket({
       Bucket: 'example-bucket'
     }).promise()
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(err.message, 'invalid url, expected /:bucket/:key')
     assert.equal(err.code, 'InternalError')
 
@@ -128,12 +147,14 @@ test('createBucket not supported', {
 test('copyObject not supported', {
 }, async (harness, assert) => {
   try {
-    await harness.s3.copyObject({
+    await harness.getS3().copyObject({
       Bucket: 'example-bucket',
       CopySource: '/foo/my-copy',
       Key: 'my-copy.txt'
     }).promise()
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(err.message, 'copyObject() not supported')
     assert.equal(err.code, 'InternalError')
 
@@ -145,14 +166,16 @@ test('copyObject not supported', {
 test('uploadPart not supported', {
 }, async (harness, assert) => {
   try {
-    await harness.s3.uploadPart({
+    await harness.getS3().uploadPart({
       Body: 'some content',
       Bucket: 'my-bucket',
       Key: 'my-multipart.txt',
       PartNumber: 1,
       UploadId: 'id'
     }).promise()
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(err.message, 'putObjectMultipart not supported')
     assert.equal(err.code, 'InternalError')
 
@@ -164,11 +187,13 @@ test('uploadPart not supported', {
 test('createMultipartUpload not supported', {
 }, async (harness, assert) => {
   try {
-    await harness.s3.createMultipartUpload({
+    await harness.getS3().createMultipartUpload({
       Bucket: 'my-bucket',
       Key: 'my-multipart.txt'
     }).promise()
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(
       err.message,
       'url not supported: POST /my-bucket/my-multipart.txt?uploads'
@@ -181,15 +206,17 @@ test('createMultipartUpload not supported', {
 })
 
 test('getFiles() for empty bucket', {
-}, async (harness, assert) => {
-  const files = await harness.getFiles('my-bucket')
+}, (harness, assert) => {
+  const files = harness.getFiles('my-bucket')
   assert.equal(files.objects.length, 0)
+  assert.end()
 })
 
 test('getFiles() for non-existant bucket', {
-}, async (harness, assert) => {
-  const files = await harness.getFiles('no-bucket')
+}, (harness, assert) => {
+  const files = harness.getFiles('no-bucket')
   assert.equal(files.objects.length, 0)
+  assert.end()
 })
 
 test('waitForFiles() timeout', {
@@ -206,11 +233,13 @@ test('waitForFiles() timeout', {
 test('getObject not supported', {
 }, async (harness, assert) => {
   try {
-    await harness.s3.getObject({
+    await harness.getS3().getObject({
       Bucket: 'my-bucket',
       Key: 'my-multipart.txt'
     }).promise()
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(err.message, 'invalid url, expected /:bucket')
     assert.equal(err.code, 'InternalError')
 
@@ -218,8 +247,6 @@ test('getObject not supported', {
   }
   assert.ok(false)
 })
-
-test('')
 
 test('listObjectsV2 query', {
 }, async (harness, assert) => {
@@ -230,11 +257,12 @@ test('listObjectsV2 query', {
   assert.ok(resp)
   assert.ok(resp.ETag)
 
-  const resp2 = await harness.s3.listObjectsV2({
+  const resp2 = await harness.getS3().listObjectsV2({
     Bucket: 'my-bucket',
     MaxKeys: 100
   }).promise()
 
+  coreAssert(resp2.Contents)
   assert.ok(resp2)
   assert.equal(resp2.Contents.length, 1)
   assert.equal(resp2.Contents[0].Key, 'foo/my-file')
@@ -252,11 +280,13 @@ test('listObjectsV2 query on non-existant bucket', {
   assert.ok(resp.ETag)
 
   try {
-    await harness.s3.listObjectsV2({
+    await harness.getS3().listObjectsV2({
       Bucket: 'my-bucket2',
       MaxKeys: 100
     }).promise()
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(err.message,
       'The specified bucket does not exist')
     assert.equal(err.statusCode, 500)
@@ -268,10 +298,11 @@ test('listObjectsV2 query on non-existant bucket', {
 })
 
 test('listBuckets', async (harness, assert) => {
-  const data = await harness.s3.listBuckets({}).promise()
+  const data = await harness.getS3().listBuckets().promise()
 
   assert.ok(data)
   assert.ok(data.Owner)
+  coreAssert(data.Buckets)
   assert.deepEqual(data.Buckets, [{
     Name: 'my-bucket',
     CreationDate: data.Buckets[0].CreationDate
@@ -287,10 +318,11 @@ test('listBuckets 5', {
     'bucket1', 'bucket2', 'bucket3', 'bucket4', 'bucket5'
   ]
 }, async (harness, assert) => {
-  const data = await harness.s3.listBuckets({}).promise()
+  const data = await harness.getS3().listBuckets().promise()
 
   assert.ok(data)
   assert.ok(data.Owner)
+  coreAssert(data.Buckets)
   assert.deepEqual(data.Buckets, [{
     Name: 'bucket1',
     CreationDate: data.Buckets[0].CreationDate
@@ -316,12 +348,18 @@ test('can cache buckets', {
     os.tmpdir(), `test-fake-s3-${cuuid()}`
   )
 
-  const buckets = await harness.s3.listBuckets().promise()
-  const accessKeyId = harness.s3.config.credentials.accessKeyId
+  const s3 = harness.getS3()
+  const buckets = await s3.listBuckets().promise()
+  const creds = s3.config.credentials
+  const accessKeyId = (creds && creds.accessKeyId) || ''
 
   // Test double caching is indempotent.
-  await harness.server.cacheBucketsToDisk(cachePath, accessKeyId, buckets)
-  await harness.server.cacheBucketsToDisk(cachePath, accessKeyId, buckets)
+  await harness.server.cacheBucketsToDisk(
+    cachePath, accessKeyId, buckets
+  )
+  await harness.server.cacheBucketsToDisk(
+    cachePath, accessKeyId, buckets
+  )
 
   const server2 = harness.getCacheServer(cachePath)
   await server2.bootstrap()
@@ -331,6 +369,7 @@ test('can cache buckets', {
   const cacheBuckets = await cacheS3.listBuckets().promise()
   assert.deepEqual(buckets, cacheBuckets)
 
+  coreAssert(cacheBuckets.Buckets)
   assert.deepEqual(cacheBuckets.Buckets, [{
     Name: 'buckets1',
     CreationDate: cacheBuckets.Buckets[0].CreationDate
@@ -362,7 +401,7 @@ test('list objects with prefix', async (harness, assert) => {
     await harness.uploadFile(file, file)
   }
 
-  const resp = await harness.s3.listObjectsV2({
+  const resp = await harness.getS3().listObjectsV2({
     Bucket: 'my-bucket',
     Prefix: 'images/'
   }).promise()
@@ -372,6 +411,7 @@ test('list objects with prefix', async (harness, assert) => {
   assert.equal(resp.MaxKeys, 1000)
   assert.equal(resp.IsTruncated, false)
   assert.ok(resp.Contents)
+  coreAssert(resp.Contents)
   assert.equal(resp.Contents.length, 5)
 
   assert.deepEqual(resp.Contents.map(o => o.Key), [
@@ -402,7 +442,7 @@ test('list objects with startAfter', async (harness, assert) => {
     await harness.uploadFile(file, file)
   }
 
-  const resp = await harness.s3.listObjectsV2({
+  const resp = await harness.getS3().listObjectsV2({
     Bucket: 'my-bucket',
     StartAfter: 'images/logo.png'
   }).promise()
@@ -412,6 +452,7 @@ test('list objects with startAfter', async (harness, assert) => {
   assert.equal(resp.MaxKeys, 1000)
   assert.equal(resp.IsTruncated, false)
   assert.ok(resp.Contents)
+  coreAssert(resp.Contents)
   assert.equal(resp.Contents.length, 5)
 
   assert.deepEqual(resp.Contents.map(o => o.Key), [
@@ -443,7 +484,7 @@ test('list objects with continuationToken', {
     await harness.uploadFile(file, file)
   }
 
-  const resp = await harness.s3.listObjectsV2({
+  const resp = await harness.getS3().listObjectsV2({
     Bucket: 'my-bucket',
     MaxKeys: 3
   }).promise()
@@ -452,6 +493,7 @@ test('list objects with continuationToken', {
   assert.equal(resp.MaxKeys, 3)
   assert.equal(resp.Name, 'my-bucket')
   assert.equal(resp.IsTruncated, true)
+  coreAssert(resp.Contents)
   assert.deepEqual(resp.Contents.map(o => o.Key), [
     'about/index.html',
     'images/art/planet.svg',
@@ -460,7 +502,7 @@ test('list objects with continuationToken', {
   assert.ok(resp.NextContinuationToken)
   assert.notOk(resp.ContinuationToken)
 
-  const resp2 = await harness.s3.listObjectsV2({
+  const resp2 = await harness.getS3().listObjectsV2({
     Bucket: 'my-bucket',
     MaxKeys: 3,
     ContinuationToken: resp.NextContinuationToken
@@ -470,6 +512,7 @@ test('list objects with continuationToken', {
   assert.equal(resp2.MaxKeys, 3)
   assert.equal(resp2.Name, 'my-bucket')
   assert.equal(resp2.IsTruncated, true)
+  coreAssert(resp2.Contents)
   assert.deepEqual(resp2.Contents.map(o => o.Key), [
     'images/logo.png',
     'images/sample.png',
@@ -478,7 +521,7 @@ test('list objects with continuationToken', {
   assert.ok(resp2.ContinuationToken)
   assert.ok(resp2.NextContinuationToken)
 
-  const resp3 = await harness.s3.listObjectsV2({
+  const resp3 = await harness.getS3().listObjectsV2({
     Bucket: 'my-bucket',
     MaxKeys: 3,
     ContinuationToken: resp2.NextContinuationToken
@@ -488,6 +531,7 @@ test('list objects with continuationToken', {
   assert.equal(resp3.MaxKeys, 3)
   assert.equal(resp3.Name, 'my-bucket')
   assert.equal(resp3.IsTruncated, false)
+  coreAssert(resp3.Contents)
   assert.deepEqual(resp3.Contents.map(o => o.Key), [
     'index.css',
     'index.html',
@@ -517,7 +561,7 @@ test('list objects with delimiter', async (harness, assert) => {
     await harness.uploadFile(file, file)
   }
 
-  const resp = await harness.s3.listObjectsV2({
+  const resp = await harness.getS3().listObjectsV2({
     Bucket: 'my-bucket',
     Delimiter: '/'
   }).promise()
@@ -536,13 +580,14 @@ test('list objects with delimiter', async (harness, assert) => {
   }, {
     Prefix: 'style/'
   }])
+  coreAssert(resp.Contents)
   assert.deepEqual(resp.Contents.map(o => o.Key), [
     '.DS_Store',
     'index.css',
     'index.html'
   ])
 
-  const resp2 = await harness.s3.listObjectsV2({
+  const resp2 = await harness.getS3().listObjectsV2({
     Bucket: 'my-bucket',
     Delimiter: '/',
     MaxKeys: 2
@@ -558,6 +603,7 @@ test('list objects with delimiter', async (harness, assert) => {
   assert.deepEqual(resp2.CommonPrefixes, [{
     Prefix: 'about/'
   }])
+  coreAssert(resp2.Contents)
   assert.deepEqual(resp2.Contents.map(o => o.Key), [
     '.DS_Store'
   ])
@@ -585,7 +631,7 @@ test('list objects with prefix & delimiter',
       await harness.uploadFile(file, file)
     }
 
-    const resp = await harness.s3.listObjectsV2({
+    const resp = await harness.getS3().listObjectsV2({
       Bucket: 'my-bucket',
       Delimiter: '/',
       Prefix: 'images/'
@@ -601,13 +647,14 @@ test('list objects with prefix & delimiter',
     assert.deepEqual(resp.CommonPrefixes, [{
       Prefix: 'images/art/'
     }])
+    coreAssert(resp.Contents)
     assert.deepEqual(resp.Contents.map(o => o.Key), [
       'images/logo.png',
       'images/sample.png',
       'images/wizard.png'
     ])
 
-    const resp2 = await harness.s3.listObjectsV2({
+    const resp2 = await harness.getS3().listObjectsV2({
       Bucket: 'my-bucket',
       Delimiter: '/',
       Prefix: 'images'
@@ -623,6 +670,7 @@ test('list objects with prefix & delimiter',
     assert.deepEqual(resp2.CommonPrefixes, [{
       Prefix: 'images/'
     }])
+    coreAssert(resp2.Contents)
     assert.deepEqual(resp2.Contents.map(o => o.Key), [])
 
     assert.end()
@@ -652,18 +700,21 @@ test('can cache objects', {
     'bucket2', 'baz/baz', 'some baz text 123456789000'
   )
 
-  const buckets = await harness.s3.listBuckets().promise()
-  const accessKeyId = harness.s3.config.credentials.accessKeyId
+  const s3 = harness.getS3()
+  const buckets = await s3.listBuckets().promise()
+  const creds = s3.config.credentials
+  const accessKeyId = (creds && creds.accessKeyId) || ''
+
   await harness.server.cacheBucketsToDisk(cachePath, accessKeyId, buckets)
 
-  const objects1 = await harness.s3.listObjectsV2({
+  const objects1 = await harness.getS3().listObjectsV2({
     Bucket: 'bucket1'
   }).promise()
   await harness.server.cacheObjectsToDisk(
     cachePath, accessKeyId, 'bucket1', objects1
   )
 
-  const objects2 = await harness.s3.listObjectsV2({
+  const objects2 = await harness.getS3().listObjectsV2({
     Bucket: 'bucket2'
   }).promise()
   await harness.server.cacheObjectsToDisk(
@@ -676,6 +727,7 @@ test('can cache objects', {
   const cacheS3 = harness.getCacheS3()
 
   const cacheBuckets = await cacheS3.listBuckets().promise()
+  coreAssert(cacheBuckets.Buckets)
   assert.deepEqual(cacheBuckets.Buckets, [{
     Name: 'bucket1',
     CreationDate: cacheBuckets.Buckets[0].CreationDate
@@ -690,6 +742,7 @@ test('can cache objects', {
   assert.equal(cobjects1.Name, 'bucket1')
   assert.equal(cobjects1.KeyCount, 2)
 
+  coreAssert(cobjects1.Contents)
   assert.deepEqual(cobjects1.Contents, [{
     Key: 'bar/my-file',
     ETag: '4a6509a66ec6815a287a01ee32e44dbc',
@@ -712,6 +765,7 @@ test('can cache objects', {
   assert.equal(cobjects2.Name, 'bucket2')
   assert.equal(cobjects2.KeyCount, 3)
 
+  coreAssert(cobjects2.Contents)
   assert.deepEqual(cobjects2.Contents, [{
     Key: 'bar/bar',
     ETag: 'c766bdc746dee5d795f3914e5698a3dd',
@@ -735,6 +789,7 @@ test('can cache objects', {
   assert.end()
 })
 
+/** @returns {string} */
 function cuuid () {
   const str = (
     Date.now().toString(16) +

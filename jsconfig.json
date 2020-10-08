@@ -1,0 +1,18 @@
+{
+  "extends": "./types/base-tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "./",
+    "paths": {
+      "@pre-bundled/tape": ["./types/pre-bundled__tape"],
+      "@pre-bundled/rimraf": ["./types/pre-bundled__rimraf"],
+      "*" : ["./types/*"]
+    }
+  },
+  "include": [
+    "types/**/*.d.ts",
+    "node_modules/tape-harness/index.js",
+    "index.js",
+    "test/**/*.js"
+  ]
+  // "exclude": ["node_modules"]
+}
