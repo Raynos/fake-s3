@@ -9,7 +9,7 @@
 // TypeScript Version: 2.8
 
 // disable automatic export
-export {};
+export {}
 
 // Uses ArrayLike to admit Unit8 and co.
 type OutputBuffer = ArrayLike<number>;
@@ -44,23 +44,23 @@ type v4 = v4Buffer & v4String;
 
 type v3String = (name: string | InputBuffer, namespace: string | InputBuffer) => string;
 type v3Buffer = <T extends OutputBuffer>(name: string | InputBuffer, namespace: string | InputBuffer, buffer: T, offset?: number) => T;
-interface v3Static {
+interface V3Static {
     // https://github.com/uuidjs/uuid/blob/master/src/v35.js#L22
     DNS: string;
     // https://github.com/uuidjs/uuid/blob/master/src/v35.js#L23
     URL: string;
 }
-type v3 = v3Buffer & v3String & v3Static;
+type v3 = v3Buffer & v3String & V3Static;
 
 type v5String = (name: string | InputBuffer, namespace: string | InputBuffer) => string;
 type v5Buffer = <T extends OutputBuffer>(name: string | InputBuffer, namespace: string | InputBuffer, buffer: T, offset?: number) => T;
-interface v5Static {
+interface V5Static {
     // https://github.com/uuidjs/uuid/blob/master/src/v35.js#L22
     DNS: string;
     // https://github.com/uuidjs/uuid/blob/master/src/v35.js#L23
     URL: string;
 }
-type v5 = v5Buffer & v5String & v5Static;
+type v5 = v5Buffer & v5String & V5Static;
 
 type NIL = string;
 
@@ -69,12 +69,12 @@ type stringify = (buffer: InputBuffer, offset?: number) => string;
 type validate = (uuid: string) => boolean;
 type version = (uuid: string) => number;
 
-export const NIL: NIL;
-export const parse: parse;
-export const stringify: stringify;
-export const v1: v1;
-export const v3: v3;
-export const v4: v4;
-export const v5: v5;
-export const validate: validate;
-export const version: version;
+export const NIL: NIL
+export const parse: parse
+export const stringify: stringify
+export const v1: v1
+export const v3: v3
+export const v4: v4
+export const v5: v5
+export const validate: validate
+export const version: version

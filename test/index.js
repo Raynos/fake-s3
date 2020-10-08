@@ -5,10 +5,19 @@ const os = require('os')
 /** @type {import('assert')} */
 const coreAssert = require('assert')
 
+/**
+ * @typedef {{
+ *    message: string,
+ *    statusCode: number,
+ *    code: string
+ * }} StatusError
+ */
+
 const { test } = require('./test-harness')
 
-test('fakeS3 is a server', async (harness, assert) => {
+test('fakeS3 is a server', (harness, assert) => {
   assert.ok(harness.server.hostPort)
+  assert.end()
 })
 
 test('fakeS3 supports uploading & waiting', {
@@ -39,7 +48,9 @@ test('fakeS3 uploading without buckets', {
     await harness.uploadFile(
       'foo/my-file', 'some text'
     )
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(err.message,
       'The specified bucket does not exist')
     assert.equal(err.statusCode, 500)
@@ -83,7 +94,7 @@ test('fakeS3 supports parallel waiting', {
   assert.equal(obj.key, 'foo/my-file')
   assert.equal(obj.content.toString(), 'some text')
 
-  const allFiles = await harness.getFiles('my-bucket')
+  const allFiles = harness.getFiles('my-bucket')
   assert.equal(allFiles.objects.length, 2)
 })
 
@@ -111,8 +122,9 @@ test('fakeS3 supports prefix', {
 
 test('listen on specific port', {
   port: 14367
-}, async (harness, assert) => {
+}, (harness, assert) => {
   assert.equal(harness.server.hostPort, 'localhost:14367')
+  assert.end()
 })
 
 test('createBucket not supported', {
@@ -121,7 +133,9 @@ test('createBucket not supported', {
     await harness.getS3().createBucket({
       Bucket: 'example-bucket'
     }).promise()
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(err.message, 'invalid url, expected /:bucket/:key')
     assert.equal(err.code, 'InternalError')
 
@@ -138,7 +152,9 @@ test('copyObject not supported', {
       CopySource: '/foo/my-copy',
       Key: 'my-copy.txt'
     }).promise()
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(err.message, 'copyObject() not supported')
     assert.equal(err.code, 'InternalError')
 
@@ -157,7 +173,9 @@ test('uploadPart not supported', {
       PartNumber: 1,
       UploadId: 'id'
     }).promise()
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(err.message, 'putObjectMultipart not supported')
     assert.equal(err.code, 'InternalError')
 
@@ -173,7 +191,9 @@ test('createMultipartUpload not supported', {
       Bucket: 'my-bucket',
       Key: 'my-multipart.txt'
     }).promise()
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(
       err.message,
       'url not supported: POST /my-bucket/my-multipart.txt?uploads'
@@ -186,15 +206,17 @@ test('createMultipartUpload not supported', {
 })
 
 test('getFiles() for empty bucket', {
-}, async (harness, assert) => {
-  const files = await harness.getFiles('my-bucket')
+}, (harness, assert) => {
+  const files = harness.getFiles('my-bucket')
   assert.equal(files.objects.length, 0)
+  assert.end()
 })
 
 test('getFiles() for non-existant bucket', {
-}, async (harness, assert) => {
-  const files = await harness.getFiles('no-bucket')
+}, (harness, assert) => {
+  const files = harness.getFiles('no-bucket')
   assert.equal(files.objects.length, 0)
+  assert.end()
 })
 
 test('waitForFiles() timeout', {
@@ -215,7 +237,9 @@ test('getObject not supported', {
       Bucket: 'my-bucket',
       Key: 'my-multipart.txt'
     }).promise()
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(err.message, 'invalid url, expected /:bucket')
     assert.equal(err.code, 'InternalError')
 
@@ -238,7 +262,7 @@ test('listObjectsV2 query', {
     MaxKeys: 100
   }).promise()
 
-  coreAssert(resp2 && resp2.Contents)
+  coreAssert(resp2.Contents)
   assert.ok(resp2)
   assert.equal(resp2.Contents.length, 1)
   assert.equal(resp2.Contents[0].Key, 'foo/my-file')
@@ -260,7 +284,9 @@ test('listObjectsV2 query on non-existant bucket', {
       Bucket: 'my-bucket2',
       MaxKeys: 100
     }).promise()
-  } catch (err) {
+  } catch (maybeErr) {
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+    const err = /** @type {StatusError} */ (maybeErr)
     assert.equal(err.message,
       'The specified bucket does not exist')
     assert.equal(err.statusCode, 500)
@@ -763,6 +789,7 @@ test('can cache objects', {
   assert.end()
 })
 
+/** @returns {string} */
 function cuuid () {
   const str = (
     Date.now().toString(16) +

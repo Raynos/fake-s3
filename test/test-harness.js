@@ -22,6 +22,7 @@ class TestHarness {
    * }} options
    */
   constructor (options = {}) {
+    /** @type {string[]} */
     this.buckets = options.buckets || ['my-bucket']
 
     const port = 'port' in options ? options.port : undefined
@@ -32,17 +33,22 @@ class TestHarness {
       port: port
     }
 
+    /** @type {FakeS3} */
     this.server = new FakeS3(opts)
 
     /** @type {import('aws-sdk').S3 | null} */
     this.s3 = null
 
+    /** @type {string} */
     this.accessKeyId = uuid()
 
+    /** @type {FakeS3 | null} */
     this.cacheServer = null
+    /** @type {import('aws-sdk').S3 | null} */
     this.cacheS3 = null
   }
 
+  /** @returns {import('aws-sdk').S3} */
   getS3 () {
     if (!this.s3) throw new Error('bootstrap() first')
     return this.s3
@@ -50,6 +56,7 @@ class TestHarness {
 
   /**
    * @param {string} cachePath
+   * @returns {FakeS3}
    */
   getCacheServer (cachePath) {
     assert(cachePath, 'cachePath required')
@@ -62,6 +69,7 @@ class TestHarness {
     return this.cacheServer
   }
 
+  /** @returns {import('aws-sdk').S3} */
   getCacheS3 () {
     if (this.cacheS3) return this.cacheS3
     if (!this.cacheServer) {
@@ -78,6 +86,7 @@ class TestHarness {
     return this.cacheS3
   }
 
+  /** @returns {Promise<void>} */
   async bootstrap () {
     await this.server.bootstrap()
 
@@ -94,6 +103,7 @@ class TestHarness {
    * @param {string} bucket
    * @param {string} key
    * @param {Buffer | string} body
+   * @returns {Promise<import('aws-sdk').S3.ManagedUpload.SendData>}
    */
   async uploadFileForBucket (bucket, key, body) {
     return this.getS3().upload({
@@ -106,6 +116,7 @@ class TestHarness {
   /**
    * @param {string} key
    * @param {Buffer | string} body
+   * @returns {Promise<import('aws-sdk').S3.ManagedUpload.SendData>}
    */
   async uploadFile (key, body) {
     const bucket = this.buckets[0] || 'my-bucket'
@@ -119,6 +130,8 @@ class TestHarness {
   /**
    * @param {string} bucket
    * @param {number} count
+   * @typedef {import('../index.js').S3ObjectAlias} S3Object
+   * @returns {Promise<{ objects: S3Object[] } | null>}
    */
   async waitForFiles (bucket, count) {
     return this.server.waitForFiles(bucket, count)
@@ -126,8 +139,9 @@ class TestHarness {
 
   /**
    * @param {string} bucket
+   * @returns {{ objects: S3Object[] }}
    */
-  async getFiles (bucket) {
+  getFiles (bucket) {
     return this.server.getFiles(bucket)
   }
 
