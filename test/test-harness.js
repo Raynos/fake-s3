@@ -6,7 +6,9 @@ const assert = require('assert')
 const util = require('util')
 
 const uuid = require('uuid').v4
+/** @type {import('@pre-bundled/rimraf')} */
 const rimraf = require('@pre-bundled/rimraf')
+/** @type {import('@pre-bundled/tape')} */
 const tape = require('@pre-bundled/tape')
 const tapeHarness = require('tape-harness')
 const AWS = require('aws-sdk')

@@ -187,7 +187,10 @@ class FakeS3 {
   }
 
   async bootstrap () {
-    this.httpServer.on('request', (req, res) => {
+    this.httpServer.on('request', (
+      /** @type {import('http').IncomingMessage} */ req,
+      /** @type {import('http').ServerResponse} */ res
+    ) => {
       this._handleServerRequest(req, res)
     })
 
@@ -297,6 +300,7 @@ class FakeS3 {
    * @returns {Promise<void>}
    */
   async populateFromCache (filePath) {
+    /** @type {string[] | null} */
     let bucketFiles = null
     try {
       bucketFiles = await readdirP(path.join(filePath, 'buckets'))
@@ -320,6 +324,7 @@ class FakeS3 {
       }
     }
 
+    /** @type {string[] | null} */
     let objectDirs = null
     try {
       objectDirs = await readdirP(path.join(filePath, 'objects'))
@@ -458,6 +463,7 @@ class FakeS3 {
       return
     }
 
+    /** @type {Map<string, S3Bucket>} */
     const bucketsMap = new Map()
     this._profiles.set('default', bucketsMap)
 
@@ -633,6 +639,7 @@ class FakeS3 {
     const resultObjects = rawObjects.slice(offset, end)
     const truncated = rawObjects.length > end
 
+    /** @type {string | undefined} */
     let nextToken
     if (truncated) {
       nextToken = cuuid()
@@ -657,8 +664,10 @@ class FakeS3 {
    * @returns {(S3Object | CommonPrefix)[]}
    */
   splitObjects (objects, delimiter, prefix) {
+    /** @type {Set<string>} */
     const prefixSet = new Set()
 
+    /** @type {Array<S3Object | CommonPrefix>} */
     const out = []
     for (const obj of objects) {
       const key = prefix ? obj.key.slice(prefix.length) : obj.key
@@ -814,13 +823,16 @@ class FakeS3 {
   _handleServerRequest (req, res) {
     /** @type {Buffer[]} */
     const buffers = []
-    req.on('data', (chunk) => {
+    req.on('data', (
+      /** @type {Buffer} */ chunk
+    ) => {
       buffers.push(chunk)
     })
     req.on('end', () => {
       const bodyBuf = Buffer.concat(buffers)
 
       if (req.method === 'PUT') {
+        /** @type {S3Object | undefined} */
         let obj
         try {
           obj = this._handlePutObject(req, bodyBuf)
@@ -831,6 +843,7 @@ class FakeS3 {
         res.setHeader('ETag', JSON.stringify(obj.md5))
         res.end()
       } else if (req.method === 'GET' && req.url === '/') {
+        /** @type {string | undefined} */
         let xml
         try {
           xml = this._handleListBuckets(req)
@@ -841,6 +854,7 @@ class FakeS3 {
         res.writeHead(200, { 'Content-Type': 'text/xml' })
         res.end(xml)
       } else if (req.method === 'GET') {
+        /** @type {string | undefined} */
         let xml
         try {
           xml = this._handleGetObjectsV2(req)
