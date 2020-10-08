@@ -21,6 +21,7 @@
   },
   "binDependencies": {
     "tsdocstandard": "15.7.1",
+    "type-coverage": "2.13.3",
     "typescript": "3.9.7"
   },
   "tsdocstandard": {
@@ -46,7 +47,9 @@
   ],
   "scripts": {
     "tsc": "npr tsc -p jsconfig.json --maxNodeModuleJsDepth 0",
-    "test": "npm run tsc && npr tsdocstandard && node test/index.js"
+    "lint": "npr tsdocstandard",
+    "test": "npm run tsc && npm run lint && node test/index.js && npm run type-coverage",
+    "type-coverage": "npr type-coverage -p jsconfig.json --ignore-catch --strict --at-least 100"
   },
   "ngen-version": "5.1.0"
 }
