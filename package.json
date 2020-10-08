@@ -20,8 +20,13 @@
     "@types/uuid": "8.3.0"
   },
   "binDependencies": {
-    "standard": "13.1.0",
+    "tsdocstandard": "15.7.1",
     "typescript": "3.9.7"
+  },
+  "tsdocstandard": {
+    "ignore": [
+      "scripts/cache-from-prod.js"
+    ]
   },
   "devDependencies": {
     "@pre-bundled/rimraf": "3.0.0-patch-1",
@@ -30,6 +35,7 @@
     "aws-sdk": "2.507.0",
     "npm-bin-deps": "1.10.1",
     "tape-harness": "5.0.0",
+    "tsdocstandard": "15.7.1",
     "uuid": "8.3.1"
   },
   "licenses": [
@@ -40,7 +46,7 @@
   ],
   "scripts": {
     "tsc": "npr tsc -p jsconfig.json --maxNodeModuleJsDepth 0",
-    "test": "npm run tsc && npr standard && node test/index.js"
+    "test": "npm run tsc && npr tsdocstandard && node test/index.js"
   },
   "ngen-version": "5.1.0"
 }
